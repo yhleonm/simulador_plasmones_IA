@@ -26,7 +26,9 @@ export default function App() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        await axios.get('http://localhost:8000/');
+        let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+        const rootUrl = rawBaseUrl.replace(/\/api\/?$/, '') || 'http://localhost:8000';
+        await axios.get(rootUrl);
         setBackendStatus('online');
       } catch {
         setBackendStatus('offline');
