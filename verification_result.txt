@@ -1,0 +1,11 @@
+--- TMM Verification Run ---
+Wavelength: 633 nm, Angle: 45 deg
+Layers: ['Vidrio (BK7)', 'Oro (Au)', 'Grafeno', 'Aire / Vacío']
+Indices: [(1.51+0j), (0.18+3j), (1.6270502591239604+2.0930605133214746j), (1+0j)]
+Thicknesses (nm): [0, 50, 0.335, 0]
+Layer 2 (Grafeno) is THIN: 0.335 nm. Precision check: 0.33500000000000001998
+OK: Thickness is not zero.
+calc_matrix layer 1 with d=50
+calc_matrix layer 2 with d=0.335
+Final Matrix M11: (2.526069842695588-0.21427180689752873j)
+--- VERIFICATION COMPLETE ---

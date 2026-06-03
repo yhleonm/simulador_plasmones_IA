@@ -1,0 +1,11 @@
+streamlit
+numpy
+matplotlib
+plotly
+scipy
+pandas
+scikit-learn
+fastapi
+uvicorn
+pydantic
+python-multipart

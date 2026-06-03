@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+var/
+sdist/
+var/
+egg-info/
+.eggs/
+*.egg
+*.log
+
+# Node/React
+node_modules/
+dist/
+.eslintcache
+.vite
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project Context
+.antigravitycli/
+.ag-context

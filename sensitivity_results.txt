@@ -1,0 +1,12 @@
+SCRIPT STARTED
+Calculating baseline...
+Baseline Angle: 44.8096
+Perturbing Gold...
+Perturbing Graphene...
+--- SENSITIVITY ANALYSIS ---
+Baseline Angle: 44.8096 deg
+Delta Angle (Au +1nm): 0.0200 deg
+Delta Angle (Graphene +1 layer / 0.335nm): 0.1202 deg
+Sensitivity (deg/nm) - Gold: 0.0200
+Sensitivity (deg/nm) - Graphene: 0.3589
+Result: Graphene is 17.91x more sensitive per nm.

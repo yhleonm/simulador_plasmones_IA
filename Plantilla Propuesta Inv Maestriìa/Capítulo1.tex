@@ -1,0 +1,38 @@
+\titleformat
+{\chapter} % command
+[display] % shape
+{\bfseries\Large\itshape} % format
+{Capítulo \ \thechapter} % label
+{0.5ex} % sep
+{
+    \rule{\textwidth}{1pt}
+    \vspace{1ex}
+    \centering
+} % before-code
+[
+\vspace{-0.5ex}%
+\rule{\textwidth}{0.3pt}
+] % after-code
+
+
+\chapter{Planteamiento del Problema}
+
+
+\section*{Introducción al Problema}
+\addcontentsline{toc}{section}{Introduction}
+Los biosensores y sensores químicos basados en el fenómeno de Resonancia de Plasmones Superficiales (SPR) se consideran el estándar de oro para la detección en tiempo real y sin marcadores (label-free) de interacciones moleculares. Un sensor SPR está compuesto típicamente por una arquitectura de múltiples capas delgadas de materiales dieléctricos, capas metálicas (como oro o plata), capas promotoras de adhesión (como titanio) y nanomateriales 2D avanzados (como el grafeno), los cuales intensifican el acoplamiento plasmónico.
+
+El modelado y diseño de estos sensores se basa en el electromagnetismo clásico, resolviendo rigurosamente la reflexión y transmisión de la luz multicapa mediante métodos analíticos como el Método de Matrices de Transferencia (TMM). Sin embargo, el esfuerzo computacional requerido para explorar las combinaciones de materiales es vasto. Al añadir más capas para maximizar las Figuras de Mérito (Resonancia, FWHM y Sensibilidad), la complejidad crece exponencialmente creando un espacio de características no lineal lleno de óptimos locales difíciles de explorar eficientemente a mano o usando algoritmos no convexos tradicionales \cite{ml_plasmonic_inverse, surrogate_optics}.
+
+
+\section{Análisis del Problema}
+
+El principal problema radica en la ineficiencia, el costo y las limitaciones de generalización del proceso heurístico algorítmico clásico utilizado para el diseño paramétrico en sensores plasmónicos SPR.
+
+\begin{itemize}
+    \item \textbf{Exploración Computacional Extenuante (Costos y Tiempo):} Las simulaciones TMM iterativas, especialmente cuando se integran variables continuas de varios decimales para grosores a nivel nanométrico bajo restricciones estrictas, exigen horas de cómputo ineficientes por cada prototipo digital evaluado, dificultando la masificación de los diseños óptimos.
+    \item \textbf{Carencia de Flujo de Diseño Inverso:} Históricamente, en óptica, el profesional plantea una estructura y simula la respuesta. Cuando los investigadores necesitan el proceso contrario (obtener el grosor ideal de oro y grafeno partiendo de un ángulo de resonancia y un nivel de sensibilidad deseados), el problema se vuelve un reto matemático inverso que es altamente de naturaleza no lineal y mal condicionado (Ill-Posed Inverse Problem).
+    \item \textbf{Desconocimiento de Correlaciones Ocultas y Parámetros Sensibles:} Los parámetros físicos en sistemas nanofotónicos están altamente acoplados. Las ligeras variaciones en una subcapa de fijación de 2 nm de titanio alteran dramáticamente la curva de absorción del grafeno situado en la última interfaz. El modelado matemático estándar por sí solo carece de herramientas robustas interpretables para aislar y visualizar la contribución de estas características individuales al desempeño del sensor sin experimentación profunda.
+\end{itemize}
+
+Para mitigar esta brecha, resulta imperativo intervenir esta rama de diseño físico mediante herramientas de la Inteligencia Artificial Impulsada por Datos (AI for Science). Mediante el cruce empírico del Deep Learning y la fotónica, el problema clásico puede convertirse en un proceso de regresión en alta dimensión robusto al ruido, apoyado en modelado inverso y sistemas físico-informados, solventando las latencias que hoy se observan en la industria de la simulación cuántica y nanofotónica \cite{pinn_nanophotonics, xai_spr_sensors}.

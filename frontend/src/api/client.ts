@@ -1,0 +1,28 @@
+import axios from 'axios';
+import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest } from '../types';
+
+let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+if (rawBaseUrl && !rawBaseUrl.endsWith('/api') && !rawBaseUrl.endsWith('/api/')) {
+    rawBaseUrl = rawBaseUrl.replace(/\/$/, '') + '/api';
+}
+const API_BASE_URL = rawBaseUrl;
+
+const api = axios.create({
+    baseURL: API_BASE_URL,
+});
+
+export const simulateReflectance = async (req: SimulationRequest): Promise<ReflectanceResponse> => {
+    const response = await api.post('/simulate/reflectance', req);
+    return response.data;
+};
+
+export const simulateFieldProfile = async (req: SimulationRequest & { theta_deg: number }): Promise<FieldProfileResponse> => {
+    const response = await api.post('/simulate/field', req);
+    return response.data;
+};
+
+export const optimizeStructure = async (req: OptimizationRequest) => {
+    const response = await api.post('/optimize', req);
+    return response.data;
+};
+
