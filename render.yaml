@@ -8,12 +8,10 @@ services:
     plan: free
 
   # 2. Frontend: React/Vite Static Site
-  - type: web
+  - type: static
     name: spr-simulator-frontend
-    env: static
     buildCommand: cd frontend && npm install && npm run build
     publishPath: frontend/dist
-    plan: free
     envVars:
       - key: VITE_API_BASE_URL
         fromService:
