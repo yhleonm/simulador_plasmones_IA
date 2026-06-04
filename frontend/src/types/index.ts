@@ -40,3 +40,20 @@ export interface FieldProfileResponse {
     materials: string[];
 }
 
+export interface Simulation2DRequest {
+    layers: LayerConfig[];
+    polarization: 'TM' | 'TE';
+    angle_min?: number;
+    angle_max?: number;
+    angle_steps?: number;
+    wl_min?: number;
+    wl_max?: number;
+    wl_steps?: number;
+}
+
+export interface Simulation2DResponse {
+    angles: number[];
+    wavelengths: number[];
+    matrix: number[][];
+}
+

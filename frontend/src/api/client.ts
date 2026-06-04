@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest } from '../types';
+import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, Simulation2DRequest, Simulation2DResponse } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 if (rawBaseUrl && !rawBaseUrl.endsWith('/api') && !rawBaseUrl.endsWith('/api/')) {
@@ -46,6 +46,11 @@ export const importMaterial = async (file: File, name: string): Promise<any> => 
             'Content-Type': 'multipart/form-data',
         },
     });
+    return response.data;
+};
+
+export const simulateReflectance2D = async (req: Simulation2DRequest): Promise<Simulation2DResponse> => {
+    const response = await api.post('/simulate/reflectance-2d', req);
     return response.data;
 };
 

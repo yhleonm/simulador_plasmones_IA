@@ -45,3 +45,18 @@ class OptimizationResponse(BaseModel):
     optimized_layers: List[LayerConfig]
     min_reflectance: float
 
+class Simulation2DRequest(BaseModel):
+    layers: List[LayerConfig]
+    polarization: str = Field("TM", pattern="^(TM|TE)$")
+    angle_min: Optional[float] = Field(30.0, ge=0, le=90)
+    angle_max: Optional[float] = Field(85.0, ge=0, le=90)
+    angle_steps: Optional[int] = Field(80, ge=10, le=200)
+    wl_min: Optional[float] = Field(400.0, gt=0)
+    wl_max: Optional[float] = Field(900.0, gt=0)
+    wl_steps: Optional[int] = Field(80, ge=10, le=200)
+
+class Simulation2DResponse(BaseModel):
+    angles: List[float]
+    wavelengths: List[float]
+    matrix: List[List[float]]
+

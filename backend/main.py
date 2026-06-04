@@ -4,7 +4,7 @@ import numpy as np
 from typing import List
 import os
 
-from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse
+from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH
 from scipy.optimize import differential_evolution
 
@@ -186,6 +186,30 @@ def optimize_structure(req: OptimizationRequest):
         min_reflectance=float(result.fun)
     )
 
+@app.post("/api/simulate/reflectance-2d", response_model=Simulation2DResponse)
+def simulate_reflectance_2d(req: Simulation2DRequest):
+    layers = [layer.model_dump() for layer in req.layers]
+    
+    angles = np.linspace(req.angle_min, req.angle_max, req.angle_steps).tolist()
+    wavelengths = np.linspace(req.wl_min, req.wl_max, req.wl_steps).tolist()
+    
+    matrix = []
+    try:
+        for wl in wavelengths:
+            row = []
+            for theta in angles:
+                R, _ = calculate_tmm(wl, theta, layers, req.polarization)
+                row.append(float(R))
+            matrix.append(row)
+    except Exception as e:
+        print(f"ERROR in 2D TMM calculation: {e}")
+        raise e
+        
+    return Simulation2DResponse(
+        angles=angles,
+        wavelengths=wavelengths,
+        matrix=matrix
+    )
 
 if __name__ == "__main__":
     import uvicorn
