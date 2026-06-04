@@ -57,3 +57,30 @@ export interface Simulation2DResponse {
     matrix: number[][];
 }
 
+export interface KineticsPoint {
+    time: number;
+    shift: number;
+    resonance: number;
+}
+
+export interface KineticsResponse {
+    points: KineticsPoint[];
+    unit: string;
+}
+
+export interface KineticsRequest {
+    layers: LayerConfig[];
+    wavelength_nm: number;
+    polarization: 'TM' | 'TE';
+    interrogation_mode: 'angular' | 'spectral';
+    fixed_angle_deg?: number;
+    ka: number;
+    kd: number;
+    concentration: number;
+    t_assoc: number;
+    t_total: number;
+    d_max: number;
+    n_adlayer: number;
+}
+
+

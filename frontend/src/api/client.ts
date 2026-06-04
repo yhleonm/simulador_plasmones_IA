@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, Simulation2DRequest, Simulation2DResponse } from '../types';
+import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 if (rawBaseUrl && !rawBaseUrl.endsWith('/api') && !rawBaseUrl.endsWith('/api/')) {
@@ -53,5 +53,11 @@ export const simulateReflectance2D = async (req: Simulation2DRequest): Promise<S
     const response = await api.post('/simulate/reflectance-2d', req);
     return response.data;
 };
+
+export const simulateKinetics = async (req: KineticsRequest): Promise<KineticsResponse> => {
+    const response = await api.post('/simulate/kinetics', req);
+    return response.data;
+};
+
 
 

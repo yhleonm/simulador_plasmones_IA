@@ -60,3 +60,29 @@ class Simulation2DResponse(BaseModel):
     wavelengths: List[float]
     matrix: List[List[float]]
 
+class KineticsRequest(BaseModel):
+    layers: List[LayerConfig]
+    wavelength_nm: float = Field(633.0, gt=0)
+    polarization: str = Field("TM", pattern="^(TM|TE)$")
+    interrogation_mode: str = Field("angular", pattern="^(angular|spectral)$")
+    fixed_angle_deg: Optional[float] = 45.0
+    
+    # Kinetic parameters
+    ka: float = Field(1e4, description="Association rate constant (M^-1 s^-1)")
+    kd: float = Field(1e-3, description="Dissociation rate constant (s^-1)")
+    concentration: float = Field(1e-6, description="Analyte concentration (M)")
+    t_assoc: float = Field(120, description="Association time (s)")
+    t_total: float = Field(300, description="Total simulation time (s)")
+    d_max: float = Field(5.0, description="Maximum adlayer thickness (nm)")
+    n_adlayer: float = Field(1.45, description="Refractive index of bound adlayer")
+
+class KineticsPoint(BaseModel):
+    time: float
+    shift: float
+    resonance: float
+
+class KineticsResponse(BaseModel):
+    points: List[KineticsPoint]
+    unit: str
+
+

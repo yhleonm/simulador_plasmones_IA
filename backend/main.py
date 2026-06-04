@@ -4,7 +4,7 @@ import numpy as np
 from typing import List
 import os
 
-from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse
+from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH
 from scipy.optimize import differential_evolution
 
@@ -211,6 +211,117 @@ def simulate_reflectance_2d(req: Simulation2DRequest):
         matrix=matrix
     )
 
+@app.post("/api/simulate/kinetics", response_model=KineticsResponse)
+def simulate_kinetics(req: KineticsRequest):
+    # Determine the time grid (e.g., 100 points for a smooth and fast plot)
+    t_vals = np.linspace(0, req.t_total, 120)
+    
+    # Precalculate Langmuir kinetics
+    ka = req.ka
+    kd = req.kd
+    c = req.concentration
+    t_assoc = req.t_assoc
+    
+    eq_ratio = (ka * c) / (ka * c + kd) if (ka * c + kd) > 0 else 0.0
+    rate = ka * c + kd
+    theta_assoc = eq_ratio * (1.0 - np.exp(-rate * t_assoc))
+    
+    original_layers = [L.model_dump() for L in req.layers]
+    
+    # Helper to find resonance with full scan
+    def find_resonance_full(layers_config):
+        if req.interrogation_mode == "spectral":
+            wavelengths = np.linspace(400, 1000, 400)
+            fixed_angle = req.fixed_angle_deg if req.fixed_angle_deg is not None else 45.0
+            r_vals = []
+            for wl in wavelengths:
+                r, _ = calculate_tmm(wl, fixed_angle, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(wavelengths[np.argmin(r_vals)])
+        else:
+            angles = np.linspace(30, 85, 550)
+            r_vals = []
+            for th in angles:
+                r, _ = calculate_tmm(req.wavelength_nm, th, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(angles[np.argmin(r_vals)])
+
+    # Helper to find resonance with narrow scan for speed and precision
+    def find_resonance_narrow(layers_config, baseline_val):
+        if req.interrogation_mode == "spectral":
+            wl_min = max(400.0, baseline_val - 15.0)
+            wl_max = min(1000.0, baseline_val + 85.0)
+            wavelengths = np.linspace(wl_min, wl_max, 150)
+            fixed_angle = req.fixed_angle_deg if req.fixed_angle_deg is not None else 45.0
+            r_vals = []
+            for wl in wavelengths:
+                r, _ = calculate_tmm(wl, fixed_angle, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(wavelengths[np.argmin(r_vals)])
+        else:
+            th_min = max(30.0, baseline_val - 1.5)
+            th_max = min(89.0, baseline_val + 6.0)
+            angles = np.linspace(th_min, th_max, 150)
+            r_vals = []
+            for theta in angles:
+                r, _ = calculate_tmm(req.wavelength_nm, theta, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(angles[np.argmin(r_vals)])
+
+    # 1. Calculate baseline resonance (at t=0, adlayer thickness = 0)
+    try:
+        baseline = find_resonance_full(original_layers)
+    except Exception as e:
+        print(f"Error calculating baseline resonance: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al calcular la resonancia base: {str(e)}")
+        
+    points = []
+    
+    # 2. Run simulation over time
+    for t in t_vals:
+        # Calculate coverage ratio using analytical Langmuir equation
+        if t <= t_assoc:
+            ratio = eq_ratio * (1.0 - np.exp(-rate * t))
+        else:
+            ratio = theta_assoc * np.exp(-kd * (t - t_assoc))
+            
+        # Adlayer thickness is proportional to coverage
+        d_adlayer = req.d_max * ratio
+        
+        # Build layer structure by inserting biological adlayer right before the last layer
+        sim_layers = list(original_layers)
+        adlayer = {
+            "material": "Personalizado (Manual)",
+            "d": d_adlayer,
+            "custom_n": req.n_adlayer,
+            "custom_k": 0.0
+        }
+        sim_layers.insert(len(sim_layers) - 1, adlayer)
+        
+        # Calculate resonance for this time step (using the fast narrow window around baseline)
+        try:
+            res_val = find_resonance_narrow(sim_layers, baseline)
+            shift = res_val - baseline
+            points.append({
+                "time": float(t),
+                "shift": float(shift),
+                "resonance": float(res_val)
+            })
+        except Exception as e:
+            print(f"Error calculating resonance at t={t}: {e}")
+            points.append({
+                "time": float(t),
+                "shift": 0.0,
+                "resonance": baseline
+            })
+            
+    unit = "nm" if req.interrogation_mode == "spectral" else "deg"
+    return {
+        "points": points,
+        "unit": unit
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

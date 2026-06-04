@@ -8,8 +8,6 @@ import {
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
-import GridOnIcon from '@mui/icons-material/GridOn';
-import Reflectance2DMap from './Reflectance2DMap';
 import { simulateReflectance } from '../api/client';
 import type { LayerConfig, ReflectanceResponse } from '../types';
 
@@ -36,7 +34,6 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
   const [dispersionData, setDispersionData] = useState<{ wavelength: number; thetaRes: number }[] | null>(null);
   const [loadingDispersion, setLoadingDispersion] = useState(false);
   const [openDispersion, setOpenDispersion] = useState(false);
-  const [open2DMap, setOpen2DMap] = useState(false);
 
   useEffect(() => {
     setNoise(isSpectral ? 0.05 : 0.001);
@@ -188,15 +185,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
           Relación Dispersión
         </Button>
 
-        <Button 
-          variant="outlined" 
-          color="info"
-          startIcon={<GridOnIcon />}
-          onClick={() => setOpen2DMap(true)} 
-          disabled={layers.length === 0}
-        >
-          Mapa Dispersión 2D
-        </Button>
+
 
         <FormControlLabel
           control={
@@ -421,17 +410,6 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDispersion(false)}>Cerrar</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Dialog for 2D Heatmap */}
-      <Dialog open={open2DMap} onClose={() => setOpen2DMap(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Mapa de Dispersión de Reflectancia 2D</DialogTitle>
-        <DialogContent dividers>
-          <Reflectance2DMap layers={layers} polarization={polarization} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen2DMap(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
     </Box>

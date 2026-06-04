@@ -2,53 +2,80 @@ import React, { useState } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label
 } from 'recharts';
-import { Box, Button, TextField, Paper, Typography, Divider, Stack } from '@mui/material';
+import { Box, Button, TextField, Paper, Typography, Divider, Stack, CircularProgress } from '@mui/material';
+import type { LayerConfig } from '../types';
+import { simulateKinetics } from '../api/client';
 
-const KineticsSensorgram: React.FC = () => {
+interface Props {
+  layers: LayerConfig[];
+  wavelength: number;
+  polarization: 'TM' | 'TE';
+  interrogationMode: 'angular' | 'spectral';
+  fixedAngle: number;
+}
+
+const KineticsSensorgram: React.FC<Props> = ({
+  layers,
+  wavelength,
+  polarization,
+  interrogationMode,
+  fixedAngle
+}) => {
   const [ka, setKa] = useState(1e4); // M^-1 s^-1
   const [kd, setKd] = useState(1e-3); // s^-1
   const [conc, setConc] = useState(1e-6); // M (1 uM)
   const [tAssoc, setTAssoc] = useState(120); // s
   const [tTotal, setTTotal] = useState(300); // s
-  const [maxShift, setMaxShift] = useState(0.5); // deg or nm
+  const [dMax, setDMax] = useState(5.0); // nm (Max thickness of adlayer)
+  const [nAdlayer, setNAdlayer] = useState(1.45); // Refractive index of biological adlayer
+
+  const [loading, setLoading] = useState(false);
   const [simulatedData, setSimulatedData] = useState<any[] | null>(null);
+  const [unit, setUnit] = useState<'deg' | 'nm'>('deg');
 
-  const runSimulation = () => {
-    const data: any[] = [];
-    const step = 1; // 1s intervals
-    
-    // Langmuir kinetics constants
-    const eqGammaRatio = (ka * conc) / (ka * conc + kd);
-    const rateAssoc = ka * conc + kd;
-    
-    // Value of Gamma/Gamma_max at end of association
-    const gammaAtAssoc = eqGammaRatio * (1 - Math.exp(-rateAssoc * tAssoc));
-
-    for (let t = 0; t <= tTotal; t += step) {
-      let shift = 0;
-      if (t <= tAssoc) {
-        // Association phase
-        const ratio = eqGammaRatio * (1 - Math.exp(-rateAssoc * t));
-        shift = maxShift * ratio;
-      } else {
-        // Dissociation phase
-        const ratio = gammaAtAssoc * Math.exp(-kd * (t - tAssoc));
-        shift = maxShift * ratio;
-      }
-      
-      data.push({
-        time: t,
-        shift: Number(shift.toFixed(5))
+  const runSimulation = async () => {
+    setLoading(true);
+    try {
+      const response = await simulateKinetics({
+        layers,
+        wavelength_nm: wavelength,
+        polarization,
+        interrogation_mode: interrogationMode,
+        fixed_angle_deg: fixedAngle,
+        ka,
+        kd,
+        concentration: conc,
+        t_assoc: tAssoc,
+        t_total: tTotal,
+        d_max: dMax,
+        n_adlayer: nAdlayer
       });
+      
+      setSimulatedData(response.points);
+      setUnit(response.unit as 'deg' | 'nm');
+    } catch (err) {
+      console.error("Kinetics simulation failed:", err);
+      alert("Error al simular la cinética física TMM.");
+    } finally {
+      setLoading(false);
     }
-    
-    setSimulatedData(data);
+  };
+
+  const getUnitString = () => {
+    return unit === 'nm' ? 'nm' : 'grados (°)';
+  };
+
+  const getAxisLabel = () => {
+    return unit === 'nm' 
+      ? 'Desplazamiento de longitud de onda (Δλ, nm)' 
+      : 'Desplazamiento de ángulo de resonancia (Δθ, °)';
   };
 
   return (
     <Box>
       <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-        Configura los parámetros cinéticos de adsorción en superficie (modelo Langmuir 1:1) para generar el sensograma de la interacción ligando-analito.
+        Simulación física completa conectando cinética química de adsorción (Langmuir 1:1) con el motor óptico TMM.
+        Se asume que el ligando se une en la superficie creando una capa biomolecular que crece en espesor (hasta un máximo de <strong>d_max</strong>) con un índice de refracción <strong>n_adlayer</strong>.
       </Typography>
       
       <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -91,30 +118,41 @@ const KineticsSensorgram: React.FC = () => {
           onChange={(e) => setTTotal(Number(e.target.value))}
         />
         <TextField
-          label="Desplazamiento Máx (deg/nm)"
+          label="Espesor Máx Adcapa d_max (nm)"
           type="number"
           size="small"
-          slotProps={{ htmlInput: { step: 0.1 } }}
-          value={maxShift}
-          onChange={(e) => setMaxShift(Number(e.target.value))}
+          slotProps={{ htmlInput: { step: 0.5 } }}
+          value={dMax}
+          onChange={(e) => setDMax(Number(e.target.value))}
+        />
+        <TextField
+          label="Índice Adcapa n_adlayer"
+          type="number"
+          size="small"
+          slotProps={{ htmlInput: { step: 0.01 } }}
+          value={nAdlayer}
+          onChange={(e) => setNAdlayer(Number(e.target.value))}
         />
         
         <Button 
           variant="contained" 
           onClick={runSimulation}
           size="medium"
+          disabled={loading || layers.length === 0}
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
         >
-          Simular Sensograma
+          {loading ? 'Calculando TMM...' : 'Simular Sensograma'}
         </Button>
       </Stack>
 
       <Divider sx={{ mb: 3 }} />
 
-      {simulatedData && (
+      {simulatedData && !loading && (
         <Box>
           <Box sx={{ mb: 2, p: 2, bgcolor: '#e8f5e9', borderRadius: 1, borderLeft: '5px solid #2e7d32' }}>
             <Typography variant="body2">
-              <strong>Análisis Cinético:</strong> El gráfico muestra la señal en tiempo real. La fase de <strong>Asociación</strong> ocurre hasta los {tAssoc} s (flujo de analito), y la fase de <strong>Disociación</strong> (lavado con buffer) ocurre hasta los {tTotal} s.
+              <strong>Análisis Cinético-Óptico:</strong> El sensograma calcula el corrimiento real de la resonancia para cada instante.
+              Ante una saturación molecular con un espesor acumulativo de <strong>{dMax} nm</strong> y refracción de <strong>{nAdlayer}</strong>, el corrimiento máximo obtenido es de <strong>{simulatedData[simulatedData.length - 1]?.shift.toFixed(4)} {getUnitString()}</strong>.
             </Typography>
           </Box>
           <Paper variant="outlined" sx={{ height: 400, p: 2, bgcolor: '#fff' }}>
@@ -130,13 +168,17 @@ const KineticsSensorgram: React.FC = () => {
                   <Label value="Tiempo (s)" offset={-10} position="insideBottom" />
                 </XAxis>
                 <YAxis 
-                  domain={[0, maxShift * 1.1]} 
                   tick={{ fontSize: 12 }}
                 >
-                  <Label value="Desplazamiento de Resonancia (Δ)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
+                  <Label 
+                    value={getAxisLabel()} 
+                    angle={-90} 
+                    position="insideLeft" 
+                    style={{ textAnchor: 'middle' }} 
+                  />
                 </YAxis>
                 <Tooltip 
-                  formatter={(value: any) => `${Number(value).toFixed(4)}`}
+                  formatter={(value: any) => [`${Number(value).toFixed(4)} ${unit}`, 'Desplazamiento (Δ)']}
                   labelFormatter={(label: any) => `Tiempo: ${label} s`}
                 />
                 <Line 
@@ -149,11 +191,20 @@ const KineticsSensorgram: React.FC = () => {
                   isAnimationActive={false}
                 />
                 <ReferenceLine x={tAssoc} stroke="#ff1744" strokeDasharray="3 3">
-                  <Label value="Lavado (Buffer)" position="top" fill="#ff1744" fontSize={10} />
+                  <Label value="Inyección de Buffer (Lavado)" position="top" fill="#ff1744" fontSize={11} />
                 </ReferenceLine>
               </LineChart>
             </ResponsiveContainer>
           </Paper>
+        </Box>
+      )}
+
+      {loading && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300 }}>
+          <CircularProgress size={50} sx={{ mb: 2 }} />
+          <Typography variant="body2" color="textSecondary">
+            Simulando cinética de adsorción y resolviendo ecuaciones TMM para cada punto temporal...
+          </Typography>
         </Box>
       )}
     </Box>

@@ -8,6 +8,7 @@ import ReflectancePlot from './components/ReflectancePlot';
 import FieldProfilePlot from './components/FieldProfilePlot';
 import LayerSchematic from './components/LayerSchematic';
 import KineticsSensorgram from './components/KineticsSensorgram';
+import Reflectance2DMap from './components/Reflectance2DMap';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -307,6 +308,7 @@ export default function App() {
             <Tab label="Reflectancia (ATR)" />
             <Tab label="Perfil de Campo" />
             <Tab label="Sensograma (Cinética)" />
+            <Tab label="Mapa de Dispersión 2D" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -326,7 +328,19 @@ export default function App() {
               />
             )}
             {tabValue === 2 && (
-              <KineticsSensorgram />
+              <KineticsSensorgram 
+                layers={layers}
+                wavelength={wavelength}
+                polarization={polarization}
+                interrogationMode={interrogationMode}
+                fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 3 && (
+              <Reflectance2DMap 
+                layers={layers} 
+                polarization={polarization} 
+              />
             )}
           </Box>
         </Paper>
