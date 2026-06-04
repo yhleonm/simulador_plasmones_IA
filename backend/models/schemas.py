@@ -2,12 +2,19 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class LayerConfig(BaseModel):
+    model_config = {"protected_namespaces": ()}
+    
     material: str
     d: float = Field(..., ge=0, description="Thickness in nm")
     custom_n: Optional[float] = 1.5
     custom_k: Optional[float] = 0.0
     custom_layers: Optional[int] = 1
     custom_mu: Optional[float] = 0.3
+    is_effective_medium: Optional[bool] = False
+    fraction: Optional[float] = 0.5
+    matrix_material: Optional[str] = "Vidrio (BK7)"
+    inclusion_material: Optional[str] = "Aire / Vacio"
+    model_type: Optional[str] = "bruggeman"
 
 class SimulationRequest(BaseModel):
     wavelength_nm: float = Field(..., gt=0)
@@ -28,6 +35,7 @@ class ReflectanceResponse(BaseModel):
     min_reflectance: Optional[float]
     fwhm: Optional[float] = 0.0
     fom: Optional[float] = 0.0
+    sensor_mode: Optional[str] = None
 
 
 class FieldProfileResponse(BaseModel):
@@ -84,5 +92,29 @@ class KineticsPoint(BaseModel):
 class KineticsResponse(BaseModel):
     points: List[KineticsPoint]
     unit: str
+
+class XAIRequest(BaseModel):
+    layers: List[LayerConfig]
+    wavelength_nm: float = Field(633.0, gt=0)
+    polarization: str = Field("TM", pattern="^(TM|TE)$")
+    interrogation_mode: str = Field("angular", pattern="^(angular|spectral)$")
+    fixed_angle_deg: Optional[float] = 45.0
+    analyze_indices: List[int]
+    bounds_min: List[float]
+    bounds_max: List[float]
+
+class PDPPoint(BaseModel):
+    value: float
+    resonance: float
+
+class XAIVariableData(BaseModel):
+    layer_index: int
+    material: str
+    importance: float
+    sweep: List[PDPPoint]
+
+class XAIResponse(BaseModel):
+    variables: List[XAIVariableData]
+
 
 

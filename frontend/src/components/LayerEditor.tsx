@@ -200,8 +200,9 @@ const LayerEditor: React.FC<Props> = ({
                 select
                 label="Material"
                 size="small"
-                value={layer.material}
+                value={layer.is_effective_medium ? 'Personalizado (Manual)' : layer.material}
                 onChange={(e) => updateLayer(index, 'material', e.target.value)}
+                disabled={layer.is_effective_medium}
               >
                 {displayMaterials.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
               </TextField>
@@ -233,11 +234,33 @@ const LayerEditor: React.FC<Props> = ({
                 />
               </Box>
             )}
-            <Box sx={{ flex: 1.2, minWidth: 110 }}>
+            <Box sx={{ flex: 1.1, minWidth: 105 }}>
               {index !== 0 && index !== layers.length - 1 && (
                 <FormControlLabel
                   control={<Checkbox checked={optIndices.includes(index)} onChange={() => toggleOpt(index)} />}
                   label="Optimizar"
+                />
+              )}
+            </Box>
+            <Box sx={{ flex: 1.3, minWidth: 125 }}>
+              {index !== 0 && index !== layers.length - 1 && (
+                <FormControlLabel
+                  control={
+                    <Checkbox 
+                      checked={layer.is_effective_medium || false} 
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        updateLayer(index, 'is_effective_medium', isChecked);
+                        if (isChecked) {
+                          if (!layer.matrix_material) updateLayer(index, 'matrix_material', 'Vidrio (BK7)');
+                          if (!layer.inclusion_material) updateLayer(index, 'inclusion_material', 'Aire / Vacio');
+                          if (!layer.model_type) updateLayer(index, 'model_type', 'bruggeman');
+                          if (layer.fraction === undefined) updateLayer(index, 'fraction', 0.5);
+                        }
+                      }} 
+                    />
+                  }
+                  label="M. Efectivo"
                 />
               )}
             </Box>
@@ -251,60 +274,120 @@ const LayerEditor: React.FC<Props> = ({
           </Stack>
 
           {/* Conditional Sub-row for extra parameters */}
-          {(layer.material === 'Personalizado (Manual)' || layer.material === 'Grafeno' || optIndices.includes(index)) && (
-            <Stack direction="row" spacing={3} sx={{ mt: 1.5, pl: 12, alignItems: 'center' }}>
-              {layer.material === 'Personalizado (Manual)' && (
-                <>
+          {(layer.material === 'Personalizado (Manual)' || layer.material === 'Grafeno' || optIndices.includes(index) || layer.is_effective_medium) && (
+            <Stack direction="column" spacing={1.5} sx={{ mt: 1.5, pl: 12 }}>
+              <Stack direction="row" spacing={3} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+                {layer.material === 'Personalizado (Manual)' && !layer.is_effective_medium && (
+                  <>
+                    <TextField
+                      label="n (Real)"
+                      type="number"
+                      size="small"
+                      slotProps={{ htmlInput: { step: 0.01 } }}
+                      sx={{ width: 120 }}
+                      value={layer.custom_n !== undefined ? layer.custom_n : 1.5}
+                      onChange={(e) => updateLayer(index, 'custom_n', Number(e.target.value))}
+                    />
+                    <TextField
+                      label="k (Imaginaria)"
+                      type="number"
+                      size="small"
+                      slotProps={{ htmlInput: { step: 0.01 } }}
+                      sx={{ width: 120 }}
+                      value={layer.custom_k !== undefined ? layer.custom_k : 0.0}
+                      onChange={(e) => updateLayer(index, 'custom_k', Number(e.target.value))}
+                    />
+                  </>
+                )}
+                {layer.material === 'Grafeno' && !layer.is_effective_medium && (
                   <TextField
-                    label="n (Real)"
+                    label="Pot. Químico μ_c (eV)"
                     type="number"
                     size="small"
-                    slotProps={{ htmlInput: { step: 0.01 } }}
-                    sx={{ width: 120 }}
-                    value={layer.custom_n !== undefined ? layer.custom_n : 1.5}
-                    onChange={(e) => updateLayer(index, 'custom_n', Number(e.target.value))}
+                    slotProps={{ htmlInput: { step: 0.05 } }}
+                    sx={{ width: 160 }}
+                    value={layer.custom_mu !== undefined ? layer.custom_mu : 0.3}
+                    onChange={(e) => updateLayer(index, 'custom_mu', Number(e.target.value))}
                   />
-                  <TextField
-                    label="k (Imaginaria)"
-                    type="number"
-                    size="small"
-                    slotProps={{ htmlInput: { step: 0.01 } }}
-                    sx={{ width: 120 }}
-                    value={layer.custom_k !== undefined ? layer.custom_k : 0.0}
-                    onChange={(e) => updateLayer(index, 'custom_k', Number(e.target.value))}
-                  />
-                </>
-              )}
-              {layer.material === 'Grafeno' && (
-                <TextField
-                  label="Pot. Químico μ_c (eV)"
-                  type="number"
-                  size="small"
-                  slotProps={{ htmlInput: { step: 0.05 } }}
-                  sx={{ width: 160 }}
-                  value={layer.custom_mu !== undefined ? layer.custom_mu : 0.3}
-                  onChange={(e) => updateLayer(index, 'custom_mu', Number(e.target.value))}
-                />
-              )}
-              {optIndices.includes(index) && (
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'bold' }}>LÍMITES IA:</Typography>
-                  <TextField
-                    label="Mín (nm)"
-                    type="number"
-                    size="small"
-                    sx={{ width: 90 }}
-                    value={minBounds[index] !== undefined ? minBounds[index] : 20}
-                    onChange={(e) => setMinBounds({ ...minBounds, [index]: Number(e.target.value) })}
-                  />
-                  <TextField
-                    label="Máx (nm)"
-                    type="number"
-                    size="small"
-                    sx={{ width: 90 }}
-                    value={maxBounds[index] !== undefined ? maxBounds[index] : 90}
-                    onChange={(e) => setMaxBounds({ ...maxBounds, [index]: Number(e.target.value) })}
-                  />
+                )}
+                {optIndices.includes(index) && (
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'bold' }}>LÍMITES IA:</Typography>
+                    <TextField
+                      label="Mín (nm)"
+                      type="number"
+                      size="small"
+                      sx={{ width: 90 }}
+                      value={minBounds[index] !== undefined ? minBounds[index] : 20}
+                      onChange={(e) => setMinBounds({ ...minBounds, [index]: Number(e.target.value) })}
+                    />
+                    <TextField
+                      label="Máx (nm)"
+                      type="number"
+                      size="small"
+                      sx={{ width: 90 }}
+                      value={maxBounds[index] !== undefined ? maxBounds[index] : 90}
+                      onChange={(e) => setMaxBounds({ ...maxBounds, [index]: Number(e.target.value) })}
+                    />
+                  </Stack>
+                )}
+              </Stack>
+              
+              {layer.is_effective_medium && (
+                <Stack direction="column" spacing={1} sx={{ width: '100%' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                    CONFIGURACIÓN DE MEDIO EFECTIVO (MEZCLA DE MATERIALES)
+                  </Typography>
+                  <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+                    <TextField
+                      select
+                      label="Matriz (Huésped)"
+                      size="small"
+                      sx={{ width: 180 }}
+                      value={layer.matrix_material || 'Vidrio (BK7)'}
+                      onChange={(e) => updateLayer(index, 'matrix_material', e.target.value)}
+                    >
+                      {displayMaterials.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                    </TextField>
+                    
+                    <TextField
+                      select
+                      label="Inclusión"
+                      size="small"
+                      sx={{ width: 180 }}
+                      value={layer.inclusion_material || 'Aire / Vacio'}
+                      onChange={(e) => updateLayer(index, 'inclusion_material', e.target.value)}
+                    >
+                      {displayMaterials.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                    </TextField>
+                    
+                    <TextField
+                      select
+                      label="Modelo"
+                      size="small"
+                      sx={{ width: 160 }}
+                      value={layer.model_type || 'bruggeman'}
+                      onChange={(e) => updateLayer(index, 'model_type', e.target.value)}
+                    >
+                      <MenuItem value="bruggeman">Bruggeman</MenuItem>
+                      <MenuItem value="maxwell-garnett">Maxwell-Garnett</MenuItem>
+                    </TextField>
+                    
+                    <TextField
+                      label="Fracción Vol. f (Inclusión)"
+                      type="number"
+                      size="small"
+                      slotProps={{ htmlInput: { step: 0.05, min: 0.0, max: 1.0 } }}
+                      sx={{ width: 180 }}
+                      value={layer.fraction !== undefined ? layer.fraction : 0.5}
+                      onChange={(e) => updateLayer(index, 'fraction', Number(e.target.value))}
+                    />
+                  </Stack>
+                  {layer.model_type === 'maxwell-garnett' && (layer.fraction ?? 0.5) > 0.3 && (
+                    <Typography variant="caption" color="warning.main" sx={{ fontWeight: 'bold', mt: 0.5 }}>
+                      ⚠️ Advertencia: El modelo de Maxwell-Garnett pierde precisión física para f &gt; 0.3. Se recomienda usar Bruggeman.
+                    </Typography>
+                  )}
                 </Stack>
               )}
             </Stack>

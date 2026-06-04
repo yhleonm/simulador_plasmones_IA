@@ -4,8 +4,8 @@ import numpy as np
 from typing import List
 import os
 
-from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse
-from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH
+from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse, XAIRequest, XAIResponse
+from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution
 
 app = FastAPI(title="SPR Simulator API")
@@ -66,10 +66,63 @@ def import_material(file: UploadFile = File(...), name: str = Form(...)):
         print(f"Error importando material: {e}")
         raise HTTPException(status_code=400, detail=f"Error parseando CSV: {str(e)}")
 
+def classify_sensor_mode(layers: List[dict], wavelength_nm: float, polarization: str) -> str:
+    has_metal = False
+    metal_thickness = 0.0
+    has_lossy_dielectric = False
+    has_transparent_dielectric = False
+    
+    for idx, L in enumerate(layers):
+        if idx == 0 or idx == len(layers) - 1:
+            continue
+            
+        material = L.get('material', '')
+        if material == 'Grafeno':
+            continue
+            
+        try:
+            n_c = get_refractive_index(L, wavelength_nm)
+            eps = n_c ** 2
+            re_eps = eps.real
+            im_eps = eps.imag
+            
+            d = L.get('d', 0.0)
+            
+            if re_eps < 0 and n_c.imag > 1.0:
+                has_metal = True
+                metal_thickness += d
+            elif re_eps > 0 and n_c.imag > 0.05 and d > 10.0:
+                has_lossy_dielectric = True
+            elif re_eps > 0 and n_c.imag <= 0.05 and d > 10.0:
+                has_transparent_dielectric = True
+        except Exception:
+            pass
+
+    if has_metal and has_lossy_dielectric:
+        return "Resonancia Hibrida (SPR + LMR)"
+        
+    if has_metal:
+        if polarization == 'TE':
+            return "Modo Metalico (Sin plasmon en TE)"
+        if metal_thickness < 30.0 and len(layers) >= 4:
+            return "LR-SPR (Plasmon de Largo Alcance)"
+        if has_transparent_dielectric:
+            return "WC-SPR (Plasmon Acoplado a Guia de Onda)"
+        return "SPR (Resonancia de Plasmon Superficial)"
+        
+    if has_lossy_dielectric:
+        return "LMR (Resonancia en Modo de Perdidas)"
+        
+    if has_transparent_dielectric:
+        return "Guia de Onda Dielectrica (WG)"
+        
+    return "Dielectrico Simple / No resonante"
+
 @app.post("/api/simulate/reflectance", response_model=ReflectanceResponse)
 def simulate_reflectance(req: SimulationRequest):
     print(f"DEBUG: Received reflectance request for {len(req.layers)} layers")
     layers = [layer.model_dump() for layer in req.layers]
+    sensor_mode = classify_sensor_mode(layers, req.wavelength_nm, req.polarization)
     
     if req.interrogation_mode == "spectral":
         wls = np.linspace(400, 1000, 600)
@@ -97,7 +150,8 @@ def simulate_reflectance(req: SimulationRequest):
             resonance_wavelength=res_wl,
             min_reflectance=min_R,
             fwhm=float(fwhm),
-            fom=0.0
+            fom=0.0,
+            sensor_mode=sensor_mode
         )
     else:
         angles = np.linspace(30, 85, 800)
@@ -125,7 +179,8 @@ def simulate_reflectance(req: SimulationRequest):
             resonance_angle=res_angle,
             min_reflectance=min_R,
             fwhm=float(fwhm),
-            fom=0.0
+            fom=0.0,
+            sensor_mode=sensor_mode
         )
 
 
@@ -320,6 +375,99 @@ def simulate_kinetics(req: KineticsRequest):
         "points": points,
         "unit": unit
     }
+
+@app.post("/api/analyze/xai", response_model=XAIResponse)
+def analyze_xai(req: XAIRequest):
+    import numpy as np
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.preprocessing import StandardScaler
+    
+    V = len(req.analyze_indices)
+    if V == 0:
+        raise HTTPException(status_code=400, detail="Debes seleccionar al menos una capa para analizar.")
+        
+    N = max(200, 50 * V)
+    original_layers = [L.model_dump() for L in req.layers]
+    
+    def find_resonance(layers_config):
+        if req.interrogation_mode == "spectral":
+            wavelengths = np.linspace(400, 1000, 200)
+            fixed_angle = req.fixed_angle_deg if req.fixed_angle_deg is not None else 45.0
+            r_vals = []
+            for wl in wavelengths:
+                r, _ = calculate_tmm(wl, fixed_angle, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(wavelengths[np.argmin(r_vals)])
+        else:
+            angles = np.linspace(30, 85, 300)
+            r_vals = []
+            for th in angles:
+                r, _ = calculate_tmm(req.wavelength_nm, th, layers_config, req.polarization)
+                r_vals.append(r)
+            return float(angles[np.argmin(r_vals)])
+            
+    X_samples = []
+    y_resonance = []
+    
+    for i in range(N):
+        temp_layers = [dict(L) for L in original_layers]
+        sample_row = []
+        for idx_in_list, layer_idx in enumerate(req.analyze_indices):
+            b_min = req.bounds_min[idx_in_list]
+            b_max = req.bounds_max[idx_in_list]
+            val = np.random.uniform(b_min, b_max)
+            temp_layers[layer_idx]['d'] = val
+            sample_row.append(val)
+            
+        try:
+            res = find_resonance(temp_layers)
+            X_samples.append(sample_row)
+            y_resonance.append(res)
+        except Exception:
+            continue
+            
+    if len(X_samples) < 10:
+        raise HTTPException(status_code=500, detail="Error generando suficientes muestras validas para entrenar la IA.")
+        
+    X_array = np.array(X_samples)
+    y_array = np.array(y_resonance)
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_array)
+    
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_scaled, y_array)
+    
+    importances = model.feature_importances_.tolist()
+    
+    variables_data = []
+    for idx_in_list, layer_idx in enumerate(req.analyze_indices):
+        b_min = req.bounds_min[idx_in_list]
+        b_max = req.bounds_max[idx_in_list]
+        
+        sweep_grid = np.linspace(b_min, b_max, 25)
+        sweep_points = []
+        
+        for val in sweep_grid:
+            temp_layers = [dict(L) for L in original_layers]
+            temp_layers[layer_idx]['d'] = val
+            try:
+                res = find_resonance(temp_layers)
+                sweep_points.append({
+                    "value": float(val),
+                    "resonance": float(res)
+                })
+            except Exception:
+                pass
+                
+        variables_data.append({
+            "layer_index": int(layer_idx),
+            "material": original_layers[layer_idx]['material'],
+            "importance": float(importances[idx_in_list]),
+            "sweep": sweep_points
+        })
+        
+    return {"variables": variables_data}
 
 if __name__ == "__main__":
     import uvicorn

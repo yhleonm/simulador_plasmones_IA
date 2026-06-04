@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label
 } from 'recharts';
 import { Box, Button, CircularProgress, TextField, Stack, Paper, Typography, Divider } from '@mui/material';
+import DownloadIcon from '@mui/icons-material/Download';
 import { simulateFieldProfile } from '../api/client';
 import type { LayerConfig, FieldProfileResponse } from '../types';
 
@@ -34,6 +35,41 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
     setLoading(false);
   };
 
+  const exportToCSV = () => {
+    if (!data) return;
+    
+    let metadata = "# SIMULADOR SPR-LMR - METADATOS DE PERFIL DE CAMPO\n";
+    metadata += `# Longitud de Onda: ${wavelength} nm\n`;
+    metadata += `# Polarizacion: ${polarization}\n`;
+    metadata += `# Angulo de Incidencia: ${theta}°\n`;
+    metadata += `# Capas del Sensor:\n`;
+    layers.forEach((l, idx) => {
+      const thickness = (idx === 0 || idx === layers.length - 1) ? "Semi-infinito" : `${l.d} nm`;
+      let extra = "";
+      if (l.material === "Personalizado (Manual)") {
+        extra = ` (n=${l.custom_n ?? 1.5}, k=${l.custom_k ?? 0.0})`;
+      } else if (l.material === "Grafeno") {
+        extra = ` (${l.custom_layers ?? 1} capas, mu=${l.custom_mu ?? 0.3} eV)`;
+      }
+      metadata += `#   Capa ${idx}: ${l.material} | Espesor: ${thickness}${extra}\n`;
+    });
+    metadata += "# ----------------------------------------------------\n";
+    
+    let csvContent = metadata + "Posicion z (nm),Intensidad |E|²\n";
+    data.z.forEach((zVal, i) => {
+      csvContent += `${zVal.toFixed(4)},${data.E_sq[i].toFixed(6)}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `perfil_campo_spr_${theta}deg.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const chartData = data ? data.z.map((z, i) => ({
     z: z,
     Esq: data.E_sq[i]
@@ -57,6 +93,17 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
         >
           {loading ? <CircularProgress size={24} /> : 'Generar Perfil de Campo'}
         </Button>
+
+        {data && (
+          <Button 
+            variant="outlined" 
+            startIcon={<DownloadIcon />} 
+            onClick={exportToCSV}
+            sx={{ ml: 'auto' }}
+          >
+            Exportar CSV
+          </Button>
+        )}
       </Stack>
       <Divider sx={{ mb: 2 }} />
 

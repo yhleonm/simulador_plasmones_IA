@@ -217,8 +217,41 @@ def parse_refractive_index_csv(content_str: str):
 
 def get_refractive_index(layer_info, wavelength_nm):
     """Devuelve n + ik."""
-    material = layer_info['material']
     wl = wavelength_nm
+    
+    # Check if this layer is an effective medium (porous/composite layer)
+    if layer_info.get('is_effective_medium', False):
+        mat_a = layer_info.get('matrix_material', 'Vidrio (BK7)')
+        mat_b = layer_info.get('inclusion_material', 'Aire / Vacio')
+        f = layer_info.get('fraction', 0.5)
+        model = layer_info.get('model_type', 'bruggeman').lower()
+        
+        # Resolve components safely without infinite recursion
+        info_a = {**layer_info, 'material': mat_a, 'is_effective_medium': False}
+        info_b = {**layer_info, 'material': mat_b, 'is_effective_medium': False}
+        
+        n_a = get_refractive_index(info_a, wavelength_nm)
+        n_b = get_refractive_index(info_b, wavelength_nm)
+        
+        eps_a = n_a ** 2
+        eps_b = n_b ** 2
+        
+        if model == "maxwell-garnett":
+            # Maxwell-Garnett
+            num = eps_b * (1.0 + 2.0 * f) + 2.0 * eps_a * (1.0 - f)
+            den = eps_b * (1.0 - f) + eps_a * (2.0 + f)
+            eps_eff = eps_a * (num / den)
+            return np.lib.scimath.sqrt(eps_eff)
+        else:
+            # Bruggeman
+            B = (2.0 - 3.0 * f) * eps_a + (3.0 * f - 1.0) * eps_b
+            val_sqrt = np.lib.scimath.sqrt(B**2 + 8.0 * eps_a * eps_b)
+            eps1 = (B + val_sqrt) / 4.0
+            eps2 = (B - val_sqrt) / 4.0
+            eps_eff = eps1 if eps1.real >= 0 else eps2
+            return np.lib.scimath.sqrt(eps_eff)
+
+    material = layer_info['material']
     lam = wl / 1000.0  # micras
     
     if material == "Personalizado (Manual)":

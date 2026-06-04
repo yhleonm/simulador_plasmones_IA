@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { 
   Box, Button, CircularProgress, Typography, Paper, Divider, FormControlLabel, Checkbox, 
-  TextField, Stack, Dialog, DialogTitle, DialogContent, DialogActions 
+  TextField, Stack, Dialog, DialogTitle, DialogContent, DialogActions, Chip
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
@@ -64,8 +64,8 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
       });
       setData(baseResult);
       
-      // 2. Perturbed simulation if biosensing is active
-      if (biosensing && layers.length > 0) {
+      // 2. Always simulate the perturbed state in the background for Sensitivity and FoM calculation
+      if (layers.length > 0) {
         const perturbedLayers = [...layers];
         const lastIdx = layers.length - 1;
         const lastLayer = layers[lastIdx];
@@ -138,8 +138,26 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
 
   const exportToCSV = () => {
     if (!data) return;
-    const xHeader = isSpectral ? "Longitud de onda (nm)" : "Angulo (deg)";
-    let csvContent = `data:text/csv;charset=utf-8,${xHeader},Reflectancia Base`;
+    
+    let metadata = "# SIMULADOR SPR-LMR - METADATOS DE REFLECTANCIA\n";
+    metadata += `# Modo de Interrogacion: ${interrogationMode === 'spectral' ? 'Espectral' : 'Angular'}\n`;
+    metadata += `# Polarizacion: ${polarization}\n`;
+    metadata += `# Parametro Fijo: ${isSpectral ? `Angulo Fijo = ${fixedAngle}°` : `Longitud de Onda = ${wavelength} nm`}\n`;
+    metadata += `# Capas del Sensor:\n`;
+    layers.forEach((l, idx) => {
+      const thickness = (idx === 0 || idx === layers.length - 1) ? "Semi-infinito" : `${l.d} nm`;
+      let extra = "";
+      if (l.material === "Personalizado (Manual)") {
+        extra = ` (n=${l.custom_n ?? 1.5}, k=${l.custom_k ?? 0.0})`;
+      } else if (l.material === "Grafeno") {
+        extra = ` (${l.custom_layers ?? 1} capas, mu=${l.custom_mu ?? 0.3} eV)`;
+      }
+      metadata += `#   Capa ${idx}: ${l.material} | Espesor: ${thickness}${extra}\n`;
+    });
+    metadata += "# ----------------------------------------------------\n";
+    
+    const xHeader = isSpectral ? "Longitud de onda [nm]" : "Angulo [deg]";
+    let csvContent = metadata + `${xHeader},Reflectancia Base`;
     if (perturbedData) {
       csvContent += `,Reflectancia Perturbada (dn=${deltaN})\n`;
     } else {
@@ -147,17 +165,18 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
     }
     
     chartData.forEach(row => {
-      let line = `${row.xVal},${row.reflectanceBase}`;
-      if (row.reflectancePerturbed !== null) {
-        line += `,${row.reflectancePerturbed}`;
+      let line = `${row.xVal.toFixed(4)},${row.reflectanceBase.toFixed(6)}`;
+      if (row.reflectancePerturbed !== null && row.reflectancePerturbed !== undefined) {
+        line += `,${row.reflectancePerturbed.toFixed(6)}`;
       }
       csvContent += line + `\n`;
     });
     
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `simulacion_spr_${interrogationMode}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `reflectancia_spr_${interrogationMode}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -194,31 +213,27 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
               onChange={(e) => setBiosensing(e.target.checked)} 
             />
           }
-          label="Simular Biosensado (Doble Curva)"
+          label="Superponer Curva con Analito"
         />
 
-        {biosensing && (
-          <>
-            <TextField
-              label="Cambio Δn en Medio Sensor (RIU)"
-              type="number"
-              size="small"
-              slotProps={{ htmlInput: { step: 0.001, min: 0.001 } }}
-              sx={{ width: 220 }}
-              value={deltaN}
-              onChange={(e) => setDeltaN(Number(e.target.value))}
-            />
-            <TextField
-              label={isSpectral ? "Ruido Detector (nm)" : "Ruido Detector (°)"}
-              type="number"
-              size="small"
-              slotProps={{ htmlInput: { step: isSpectral ? 0.01 : 0.0001 } }}
-              sx={{ width: 180 }}
-              value={noise}
-              onChange={(e) => setNoise(Number(e.target.value))}
-            />
-          </>
-        )}
+        <TextField
+          label="Cambio índice medio (Δn)"
+          type="number"
+          size="small"
+          slotProps={{ htmlInput: { step: 0.001 } }}
+          sx={{ width: 180 }}
+          value={deltaN}
+          onChange={(e) => setDeltaN(Number(e.target.value))}
+        />
+        <TextField
+          label="Ruido instrumental (σ)"
+          type="number"
+          size="small"
+          slotProps={{ htmlInput: { step: isSpectral ? 0.01 : 0.0001 } }}
+          sx={{ width: 180 }}
+          value={noise}
+          onChange={(e) => setNoise(Number(e.target.value))}
+        />
         
         {data && (
           <Button 
@@ -243,7 +258,23 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                 {thetaBase?.toFixed(isSpectral ? 1 : 2)}{isSpectral ? " nm" : "°"}
               </Typography>
             </Box>
-            {biosensing && thetaPert !== undefined && (
+            {data.sensor_mode && (
+              <Box sx={{ minWidth: 120 }}>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 'bold' }}>
+                  TIPO DE RESONANCIA
+                </Typography>
+                <Chip 
+                  label={data.sensor_mode}
+                  color={
+                    data.sensor_mode.includes("SPR") ? "primary" : 
+                    data.sensor_mode.includes("LMR") ? "secondary" : "default"
+                  }
+                  size="small"
+                  sx={{ mt: 0.5, fontWeight: 'bold' }}
+                />
+              </Box>
+            )}
+            {thetaPert !== undefined && (
               <Box sx={{ minWidth: 120 }}>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 'bold' }}>
                   {isSpectral ? "λ CON ANALITO" : "θ CON ANALITO"}
@@ -253,7 +284,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                 </Typography>
               </Box>
             )}
-            {biosensing && shift !== null && (
+            {shift !== null && (
               <Box sx={{ minWidth: 120 }}>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 'bold' }}>
                   DESPLAZAMIENTO (Δ{isSpectral ? "λ" : "θ"})
@@ -271,7 +302,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                 {fwhm.toFixed(isSpectral ? 1 : 3)}{isSpectral ? " nm" : "°"}
               </Typography>
             </Box>
-            {biosensing && sensitivity !== null && (
+            {sensitivity !== null && (
               <Box sx={{ minWidth: 120 }}>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 'bold' }}>
                   SENSIBILIDAD (S)
@@ -281,7 +312,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                 </Typography>
               </Box>
             )}
-            {biosensing && lod !== null && (
+            {lod !== null && (
               <Box sx={{ minWidth: 120 }}>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 'bold' }}>
                   LÍMITE DE DETECCIÓN (LoD)
@@ -293,7 +324,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
             )}
           </Box>
 
-          {biosensing && fom !== null && lod !== null && (
+          {fom !== null && lod !== null && (
             <Box sx={{ mb: 2, p: 1.5, bgcolor: '#e8f5e9', borderRadius: 1, borderLeft: '5px solid #2e7d32' }}>
               <Typography variant="body2">
                 <strong>Análisis Físico del Sensor:</strong> La Figura de Mérito es de <strong>{fom.toFixed(1)} RIU⁻¹</strong> y el Límite de Detección mínimo estimable es de <strong>{lod.toExponential(3)} RIU</strong>. Un LoD más bajo indica que el sensor puede identificar concentraciones mucho menores de moléculas orgánicas.
@@ -336,7 +367,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                   dot={false} 
                   isAnimationActive={false}
                 />
-                {perturbedData && (
+                {perturbedData && biosensing && (
                   <Line 
                     type="monotone" 
                     dataKey="reflectancePerturbed" 

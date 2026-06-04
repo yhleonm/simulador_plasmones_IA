@@ -3,6 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label
 } from 'recharts';
 import { Box, Button, TextField, Paper, Typography, Divider, Stack, CircularProgress } from '@mui/material';
+import DownloadIcon from '@mui/icons-material/Download';
 import type { LayerConfig } from '../types';
 import { simulateKinetics } from '../api/client';
 
@@ -59,6 +60,49 @@ const KineticsSensorgram: React.FC<Props> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportToCSV = () => {
+    if (!simulatedData) return;
+    
+    let metadata = "# SIMULADOR SPR-LMR - METADATOS DE SENSOGRAMA CINETICO\n";
+    metadata += `# Const. Asociacion ka: ${ka} M^-1 s^-1\n`;
+    metadata += `# Const. Disociacion kd: ${kd} s^-1\n`;
+    metadata += `# Concentracion C: ${conc} M\n`;
+    metadata += `# Tiempo de Inyeccion: ${tAssoc} s\n`;
+    metadata += `# Tiempo Total: ${tTotal} s\n`;
+    metadata += `# Espesor Maximo d_max: ${dMax} nm\n`;
+    metadata += `# Indice de Refraccion n_adlayer: ${nAdlayer}\n`;
+    metadata += `# Capas del Sensor:\n`;
+    layers.forEach((l, idx) => {
+      const thickness = (idx === 0 || idx === layers.length - 1) ? "Semi-infinito" : `${l.d} nm`;
+      let extra = "";
+      if (l.material === "Personalizado (Manual)") {
+        extra = ` (n=${l.custom_n ?? 1.5}, k=${l.custom_k ?? 0.0})`;
+      } else if (l.material === "Grafeno") {
+        extra = ` (${l.custom_layers ?? 1} capas, mu=${l.custom_mu ?? 0.3} eV)`;
+      }
+      metadata += `#   Capa ${idx}: ${l.material} | Espesor: ${thickness}${extra}\n`;
+    });
+    metadata += "# ----------------------------------------------------\n";
+    
+    const yHeader = unit === 'nm' 
+      ? "Desplazamiento resonancia (delta_lambda) [nm]" 
+      : "Desplazamiento resonancia (delta_theta) [deg]";
+    let csvContent = metadata + `Tiempo [s],${yHeader},Valor Resonancia Absoluto\n`;
+    
+    simulatedData.forEach(row => {
+      csvContent += `${row.time},${row.shift.toFixed(6)},${row.resonance.toFixed(6)}\n`;
+    });
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `sensograma_spr_cinetica.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const getUnitString = () => {
@@ -143,6 +187,18 @@ const KineticsSensorgram: React.FC<Props> = ({
         >
           {loading ? 'Calculando TMM...' : 'Simular Sensograma'}
         </Button>
+
+        {simulatedData && !loading && (
+          <Button 
+            variant="outlined" 
+            startIcon={<DownloadIcon />} 
+            onClick={exportToCSV}
+            size="medium"
+            sx={{ ml: 'auto' }}
+          >
+            Exportar CSV
+          </Button>
+        )}
       </Stack>
 
       <Divider sx={{ mb: 3 }} />

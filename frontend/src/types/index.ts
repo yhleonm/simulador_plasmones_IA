@@ -5,6 +5,11 @@ export interface LayerConfig {
     custom_k?: number;
     custom_layers?: number;
     custom_mu?: number;
+    is_effective_medium?: boolean;
+    fraction?: number;
+    matrix_material?: string;
+    inclusion_material?: string;
+    model_type?: 'bruggeman' | 'maxwell-garnett';
 }
 
 export interface SimulationRequest {
@@ -30,6 +35,7 @@ export interface ReflectanceResponse {
     min_reflectance?: number;
     fwhm?: number;
     fom?: number;
+    sensor_mode?: string;
 }
 
 
@@ -81,6 +87,33 @@ export interface KineticsRequest {
     t_total: number;
     d_max: number;
     n_adlayer: number;
+}
+
+export interface PDPPoint {
+    value: number;
+    resonance: number;
+}
+
+export interface XAIVariableData {
+    layer_index: number;
+    material: string;
+    importance: number;
+    sweep: PDPPoint[];
+}
+
+export interface XAIResponse {
+    variables: XAIVariableData[];
+}
+
+export interface XAIRequest {
+    layers: LayerConfig[];
+    wavelength_nm: number;
+    polarization: 'TM' | 'TE';
+    interrogation_mode: 'angular' | 'spectral';
+    fixed_angle_deg?: number;
+    analyze_indices: number[];
+    bounds_min: number[];
+    bounds_max: number[];
 }
 
 
