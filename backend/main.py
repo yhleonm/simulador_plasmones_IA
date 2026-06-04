@@ -1,10 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 from typing import List
+import os
 
 from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse
-from backend.core.engine import calculate_tmm, calculate_field_profile
+from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH
 from scipy.optimize import differential_evolution
 
 app = FastAPI(title="SPR Simulator API")
@@ -21,6 +22,49 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "SPR Simulator API is running"}
+
+@app.get("/api/materials")
+def list_materials():
+    try:
+        return get_available_materials()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/materials/import")
+def import_material(file: UploadFile = File(...), name: str = Form(...)):
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="El nombre del material no puede estar vacío.")
+    
+    try:
+        content_bytes = file.file.read()
+        content_str = content_bytes.decode("utf-8", errors="ignore")
+        
+        # Parse RefractiveIndex.info CSV
+        df = parse_refractive_index_csv(content_str)
+        
+        # Sanitize name to make safe filename
+        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-', '(', ')')).strip()
+        safe_filename = safe_name.replace(" ", "_") + ".csv"
+        
+        # Ensure database folder exists
+        os.makedirs(DB_PATH, exist_ok=True)
+        
+        # Save CSV file
+        dest_path = os.path.join(DB_PATH, safe_filename)
+        df.to_csv(dest_path, index=False)
+        
+        # Clear lru cache
+        from backend.core.engine import get_interpolator
+        get_interpolator.cache_clear()
+        
+        return {
+            "status": "success", 
+            "message": f"Material '{name}' importado correctamente como '{safe_filename}'", 
+            "filename": safe_filename
+        }
+    except Exception as e:
+        print(f"Error importando material: {e}")
+        raise HTTPException(status_code=400, detail=f"Error parseando CSV: {str(e)}")
 
 @app.post("/api/simulate/reflectance", response_model=ReflectanceResponse)
 def simulate_reflectance(req: SimulationRequest):

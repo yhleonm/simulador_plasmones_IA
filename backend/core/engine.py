@@ -74,6 +74,147 @@ def calculate_graphene_sigma(wavelength_nm, chemical_potential_eV=0.3, temp_K=30
     sigma_inter = real_inter + 1j * imag_inter
     return sigma_intra + sigma_inter
 
+def get_material_display_name(filename):
+    """Mapea nombres de archivos CSV a nombres legibles para el usuario."""
+    mapping = {
+        "Au_ThinFilm.csv": "Oro (Au)",
+        "Au_Johnson.csv": "Oro (Au) - Johnson & Christy",
+        "Ag_ThinFilm.csv": "Plata (Ag)",
+        "Ag_Johnson.csv": "Plata (Ag) - Johnson & Christy",
+        "Cr_Johnson.csv": "Cromo (Cr)",
+        "Al_Johnson.csv": "Aluminio (Al)",
+        "Ti_Johnson.csv": "Titanio (Ti)",
+        "MoS2.csv": "MoS2 (Disulfuro de Molibdeno)",
+        "ITO.csv": "ITO (Óxido de Indio y Estaño)",
+        "SiO2_Palik.csv": "SiO2 (Dióxido de Silicio) - Palik",
+        "Cu_Johnson.csv": "Cobre (Cu) - Johnson & Christy",
+        "Si_Green.csv": "Silicio (Si) - Green",
+        "SnO2.csv": "Dióxido de Estaño (SnO2)",
+        "WS2.csv": "Disulfuro de Tungsteno (WS2)",
+    }
+    if filename in mapping:
+        return mapping[filename]
+    name_without_ext = os.path.splitext(filename)[0]
+    return name_without_ext.replace("_", " ")
+
+def get_available_materials():
+    """Retorna una lista dinámica de todos los materiales disponibles."""
+    materials_list = [
+        {"name": "Aire / Vacío", "type": "built-in"},
+        {"name": "Agua (H2O)", "type": "built-in"},
+        {"name": "Vidrio (BK7)", "type": "built-in"},
+        {"name": "Sílice (Silica)", "type": "built-in"},
+        {"name": "Fluoruro N-F2", "type": "built-in"},
+        {"name": "Zafiro Sintético (Al2O3)", "type": "built-in"},
+        {"name": "Vidrio Denso (SF10)", "type": "built-in"},
+        {"name": "Vidrio N-SF14", "type": "built-in"},
+        {"name": "Acrílico SUVT", "type": "built-in"},
+        {"name": "Dióxido de Silicio (SiO2)", "type": "built-in"},
+        {"name": "PVA", "type": "built-in"},
+        {"name": "Glicerina", "type": "built-in"},
+        {"name": "Cuarzo", "type": "built-in"},
+        {"name": "TiO2", "type": "built-in"},
+        {"name": "ZnO", "type": "built-in"},
+        {"name": "Grafeno", "type": "built-in"},
+        {"name": "Personalizado (Manual)", "type": "built-in"},
+    ]
+    
+    if os.path.exists(DB_PATH):
+        try:
+            files = [f for f in os.listdir(DB_PATH) if f.endswith('.csv')]
+            for f in files:
+                name = get_material_display_name(f)
+                if not any(m["name"] == name for m in materials_list):
+                    materials_list.append({"name": name, "type": "csv", "file": f})
+        except Exception as e:
+            print(f"Error escaneando base de datos: {e}")
+            
+    return materials_list
+
+def parse_refractive_index_csv(content_str: str):
+    """
+    Parsea un string CSV (formato refractiveindex.info o similar) y retorna un DataFrame
+    con columnas ['wl', 'n', 'k']. Soporta formatos de bloque doble e individuales.
+    Convierte longitudes de onda de micras a nanómetros si es necesario.
+    """
+    lines = content_str.split('\n')
+    
+    n_wls, n_vals = [], []
+    k_wls, k_vals = [], []
+    
+    modo_actual = 'n'
+    
+    for line in lines:
+        line = line.strip().lower()
+        if not line:
+            continue
+            
+        # Detectar transición de bloque
+        if ('wl' in line or 'wavelength' in line or 'lambda' in line) and ('k' in line or 'z' in line or 'extinction' in line):
+            modo_actual = 'k'
+            continue
+        if ('wl' in line or 'wavelength' in line or 'lambda' in line) and ('n' in line or 'y' in line or 'refractive' in line):
+            modo_actual = 'n'
+            continue
+            
+        try:
+            partes = [p.strip() for p in line.replace(';', ',').replace('\t', ',').split(',')]
+            if len(partes) >= 2:
+                wl = float(partes[0])
+                val = float(partes[1])
+                
+                if modo_actual == 'n':
+                    n_wls.append(wl)
+                    n_vals.append(val)
+                elif modo_actual == 'k':
+                    k_wls.append(wl)
+                    k_vals.append(val)
+        except ValueError:
+            pass
+            
+    df_n = pd.DataFrame({'wl': n_wls, 'n': n_vals}) if n_wls else pd.DataFrame()
+    df_k = pd.DataFrame({'wl': k_wls, 'k': k_vals}) if k_wls else pd.DataFrame()
+    
+    if df_n.empty and df_k.empty:
+        # Intentar parsear como wl,n,k en una sola tabla
+        wls, ns, ks = [], [], []
+        for line in lines:
+            line = line.strip().lower()
+            if not line or any(h in line for h in ['wl', 'wavelength', 'lambda', 'n', 'k']):
+                continue
+            try:
+                partes = [p.strip() for p in line.replace(';', ',').replace('\t', ',').split(',')]
+                if len(partes) >= 3:
+                    wls.append(float(partes[0]))
+                    ns.append(float(partes[1]))
+                    ks.append(float(partes[2]))
+            except ValueError:
+                pass
+        if wls:
+            df_final = pd.DataFrame({'wl': wls, 'n': ns, 'k': ks})
+        else:
+            raise ValueError("No se encontraron datos de índice de refracción (n o k) válidos en el CSV.")
+    else:
+        # Convertir micras a nanómetros si es necesario (el formato de refractiveindex.info suele ser micras)
+        # Si la longitud de onda máxima es menor a 15, asumimos que está en micras y multiplicamos por 1000.
+        if not df_n.empty and df_n['wl'].max() < 15.0:
+            df_n['wl'] = df_n['wl'] * 1000.0
+        if not df_k.empty and df_k['wl'].max() < 15.0:
+            df_k['wl'] = df_k['wl'] * 1000.0
+            
+        if not df_n.empty and not df_k.empty:
+            df_final = pd.merge(df_n, df_k, on='wl', how='outer').sort_values('wl').reset_index(drop=True)
+            df_final['n'] = df_final['n'].interpolate(method='linear').bfill().ffill()
+            df_final['k'] = df_final['k'].interpolate(method='linear').bfill().ffill()
+        elif not df_n.empty:
+            df_final = df_n.copy()
+            df_final['k'] = 0.0
+        else:
+            df_final = df_k.copy()
+            df_final['n'] = 1.0
+            
+    return df_final
+
 def get_refractive_index(layer_info, wavelength_nm):
     """Devuelve n + ik."""
     material = layer_info['material']
@@ -84,23 +225,17 @@ def get_refractive_index(layer_info, wavelength_nm):
         n = layer_info.get('custom_n', 1.5)
         k = layer_info.get('custom_k', 0.0)
         return n + 1j * k
-    
-    material_files = {
-        "Oro (Au)": "Au_ThinFilm.csv",
-        "Plata (Ag)": "Ag_ThinFilm.csv",
-        "Cromo (Cr)": "Cr_Johnson.csv",
-        "Aluminio (Al)": "Al_Johnson.csv",
-        "Titanio (Ti)": "Ti_Johnson.csv",
-        "MoS2 (Disulfuro de Molibdeno)": "MoS2.csv",
-        "ITO (Óxido de Indio y Estaño)": "ITO.csv"
-    }
-    
-    if material in material_files:
-        interpolators = get_interpolator(material_files[material])
-        if interpolators:
-            f_n, f_k = interpolators
-            return float(f_n(wl)) + 1j * float(f_k(wl))
+        
+    # 1. Buscar en materiales dinámicos (CSVs en database/)
+    materials = get_available_materials()
+    for m in materials:
+        if m["type"] == "csv" and m["name"] == material:
+            interpolators = get_interpolator(m["file"])
+            if interpolators:
+                f_n, f_k = interpolators
+                return float(f_n(wl)) + 1j * float(f_k(wl))
 
+    # 2. Fórmulas analíticas o valores fijos si no se encuentra en CSV
     sellmeier_params = {
         "Vidrio (BK7)": (1.03961212, 2.31792344E-1, 1.01046945, 6.00069867E-3, 2.00179144E-2, 103.560653),
         "Sílice (Silica)": (0.6961663, 0.4079426, 0.8974794, 4.6791E-3, 1.35121E-2, 97.934003),

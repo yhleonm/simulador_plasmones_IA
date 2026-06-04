@@ -1,33 +1,53 @@
 import React, { useState } from 'react';
 import { 
   Box, IconButton, TextField, MenuItem, Button, Typography, Divider, Checkbox, FormControlLabel, CircularProgress,
-  Stack
+  Stack, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import type { LayerConfig } from '../types';
-import { optimizeStructure } from '../api/client';
+import { optimizeStructure, importMaterial } from '../api/client';
+import type { MaterialInfo } from '../api/client';
 
 interface Props {
   layers: LayerConfig[];
   setLayers: React.Dispatch<React.SetStateAction<LayerConfig[]>>;
   wavelength: number;
   polarization: 'TM' | 'TE';
+  materialsList: MaterialInfo[];
+  refreshMaterials: () => Promise<void>;
 }
 
-const materials = [
+const DEFAULT_MATERIALS = [
     "Aire / Vacío", "Agua (H2O)", "Vidrio (BK7)", "Sílice (Silica)", 
-    "Oro (Au)", "Plata (Ag)", "Aluminio (Al)", "Cromo (Cr)", "Grafeno", "Personalizado (Manual)"
+    "Oro (Au)", "Oro (Au) - Johnson & Christy", "Plata (Ag)", "Plata (Ag) - Johnson & Christy", 
+    "Aluminio (Al)", "Cromo (Cr)", "Titanio (Ti)", "Cobre (Cu) - Johnson & Christy", 
+    "Silicio (Si) - Green", "Dióxido de Estaño (SnO2)", "Disulfuro de Tungsteno (WS2)", 
+    "MoS2 (Disulfuro de Molibdeno)", "ITO (Óxido de Indio y Estaño)", "Grafeno", "Personalizado (Manual)"
 ];
 
-const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarization }) => {
+const LayerEditor: React.FC<Props> = ({ 
+  layers, setLayers, wavelength, polarization, materialsList, refreshMaterials 
+}) => {
   const [optIndices, setOptIndices] = useState<number[]>([]);
   const [optimizing, setOptimizing] = useState(false);
   
   // Custom optimization bounds state
   const [minBounds, setMinBounds] = useState<{[key: number]: number}>({});
   const [maxBounds, setMaxBounds] = useState<{[key: number]: number}>({});
+
+  // Material import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  // Material dropdown options
+  const displayMaterials = materialsList && materialsList.length > 0 
+    ? materialsList.map(m => m.name) 
+    : DEFAULT_MATERIALS;
 
   const updateLayer = (index: number, field: keyof LayerConfig, value: any) => {
     const newLayers = [...layers];
@@ -88,6 +108,27 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
     setOptimizing(false);
   };
 
+  const handleImportMaterialSubmit = async () => {
+    if (!importFile || !importName.trim()) {
+      alert("Por favor, selecciona un archivo CSV y especifica un nombre para el material.");
+      return;
+    }
+    setImporting(true);
+    try {
+      await importMaterial(importFile, importName.trim());
+      await refreshMaterials();
+      alert(`Material '${importName}' importado con éxito.`);
+      setImportDialogOpen(false);
+      setImportName('');
+      setImportFile(null);
+    } catch (error: any) {
+      console.error("Material import failed:", error);
+      alert("Error al importar material: " + (error.response?.data?.detail || error.message));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <Box>
       <Stack direction="row" spacing={2} sx={{ mb: 3, alignItems: 'center' }}>
@@ -95,7 +136,7 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
           select
           label="Cargar Plantilla de Sensor"
           size="small"
-          sx={{ width: '100%', maxWidth: 350 }}
+          sx={{ width: '100%', maxWidth: 300 }}
           value=""
           onChange={(e) => {
             const val = e.target.value;
@@ -134,6 +175,16 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
           <MenuItem value="waveguide">Guía de Onda WC-SPR (Au + SiO2)</MenuItem>
           <MenuItem value="graphene">Biosensor de Grafeno (Au + 3 capas G)</MenuItem>
         </TextField>
+
+        <Button
+          variant="outlined"
+          color="info"
+          startIcon={<CloudUploadIcon />}
+          onClick={() => setImportDialogOpen(true)}
+          sx={{ height: 40 }}
+        >
+          Importar Material (.csv)
+        </Button>
       </Stack>
       <Divider sx={{ mb: 3 }} />
 
@@ -152,10 +203,10 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
                 value={layer.material}
                 onChange={(e) => updateLayer(index, 'material', e.target.value)}
               >
-                {materials.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                {displayMaterials.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
               </TextField>
             </Box>
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1.5, minWidth: 100 }}>
               {index !== 0 && index !== layers.length - 1 && (
                 <TextField
                   fullWidth
@@ -170,19 +221,19 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
                 <Typography variant="body2" component="span" color="text.secondary">Semi-infinito</Typography>
               )}
             </Box>
-            <Box sx={{ flex: 1 }}>
-                {layer.material === 'Grafeno' && (
-                    <TextField
-                        fullWidth
-                        label="N° Capas"
-                        type="number"
-                        size="small"
-                        value={layer.custom_layers || 1}
-                        onChange={(e) => updateLayer(index, 'custom_layers', Number(e.target.value))}
-                    />
-                )}
-            </Box>
-            <Box sx={{ flex: 1 }}>
+            {layer.material === 'Grafeno' && (
+              <Box sx={{ flex: 1, minWidth: 80 }}>
+                <TextField
+                  fullWidth
+                  label="N° Capas"
+                  type="number"
+                  size="small"
+                  value={layer.custom_layers || 1}
+                  onChange={(e) => updateLayer(index, 'custom_layers', Number(e.target.value))}
+                />
+              </Box>
+            )}
+            <Box sx={{ flex: 1.2, minWidth: 110 }}>
               {index !== 0 && index !== layers.length - 1 && (
                 <FormControlLabel
                   control={<Checkbox checked={optIndices.includes(index)} onChange={() => toggleOpt(index)} />}
@@ -280,9 +331,63 @@ const LayerEditor: React.FC<Props> = ({ layers, setLayers, wavelength, polarizat
           IA: Optimizar Grosores
         </Button>
       </Stack>
+
+      {/* Dialog for Importing Materials */}
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Importar Material desde RefractiveIndex.info</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 3, mt: 1 }}>
+            Sube un archivo <strong>CSV (Data)</strong> descargado directamente de <a href="https://refractiveindex.info" target="_blank" rel="noreferrer">refractiveindex.info</a>. El sistema interpretará automáticamente las constantes ópticas n y k y las longitudes de onda en micras.
+          </Typography>
+          <Stack spacing={3}>
+            <TextField
+              fullWidth
+              label="Nombre del Material"
+              placeholder="Ej: Cobre (Cu) - Johnson, ZnO - ALD"
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+            />
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<CloudUploadIcon />}
+              fullWidth
+              sx={{ py: 1.5 }}
+            >
+              {importFile ? `Archivo seleccionado: ${importFile.name}` : 'Seleccionar Archivo CSV'}
+              <input 
+                type="file" 
+                accept=".csv" 
+                hidden 
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setImportFile(e.target.files[0]);
+                    if (!importName) {
+                      const nameGuess = e.target.files[0].name.replace('.csv', '').replace(/_/g, ' ');
+                      setImportName(nameGuess);
+                    }
+                  }
+                }} 
+              />
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleImportMaterialSubmit} 
+            variant="contained" 
+            color="primary"
+            disabled={importing || !importFile || !importName.trim()}
+          >
+            {importing ? <CircularProgress size={20} /> : 'Importar y Registrar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
 export default LayerEditor;
-

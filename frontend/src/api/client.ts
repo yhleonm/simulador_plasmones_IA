@@ -26,3 +26,27 @@ export const optimizeStructure = async (req: OptimizationRequest) => {
     return response.data;
 };
 
+export interface MaterialInfo {
+    name: string;
+    type: 'built-in' | 'csv';
+    file?: string;
+}
+
+export const getMaterials = async (): Promise<MaterialInfo[]> => {
+    const response = await api.get('/materials');
+    return response.data;
+};
+
+export const importMaterial = async (file: File, name: string): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    const response = await api.post('/materials/import', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
+    });
+    return response.data;
+};
+
+

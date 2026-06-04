@@ -9,6 +9,9 @@ import FieldProfilePlot from './components/FieldProfilePlot';
 import LayerSchematic from './components/LayerSchematic';
 import KineticsSensorgram from './components/KineticsSensorgram';
 import type { LayerConfig } from './types';
+import { getMaterials } from './api/client';
+import type { MaterialInfo } from './api/client';
+
 
 export default function App() {
   const [wavelength, setWavelength] = useState(633);
@@ -22,6 +25,16 @@ export default function App() {
   ]);
   const [tabValue, setTabValue] = useState(0);
   const [backendStatus, setBackendStatus] = useState<'online' | 'offline'>('offline');
+  const [materials, setMaterials] = useState<MaterialInfo[]>([]);
+
+  const fetchMaterials = async () => {
+    try {
+      const mats = await getMaterials();
+      setMaterials(mats);
+    } catch (err) {
+      console.error("Error fetching materials list:", err);
+    }
+  };
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -38,6 +51,12 @@ export default function App() {
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (backendStatus === 'online') {
+      fetchMaterials();
+    }
+  }, [backendStatus]);
 
   const exportDesign = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
@@ -267,6 +286,8 @@ export default function App() {
                 setLayers={setLayers} 
                 wavelength={wavelength} 
                 polarization={polarization} 
+                materialsList={materials}
+                refreshMaterials={fetchMaterials}
               />
             </Box>
             <Box sx={{ flex: 4.5, minWidth: 0 }}>
