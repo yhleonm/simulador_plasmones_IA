@@ -48,6 +48,7 @@ class OptimizationRequest(SimulationRequest):
     optimize_indices: List[int] = Field(..., description="Indices of layers to optimize")
     bounds_min: Optional[List[float]] = Field(None, description="Minimum search bounds for each optimized layer")
     bounds_max: Optional[List[float]] = Field(None, description="Maximum search bounds for each optimized layer")
+    target: Optional[str] = Field("Minimizar Reflectancia", description="Optimization target: Minimizar Reflectancia, Maximizar Sensibilidad, or Maximizar FoM")
 
 class OptimizationResponse(BaseModel):
     optimized_layers: List[LayerConfig]

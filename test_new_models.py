@@ -1,4 +1,4 @@
-from app import get_refractive_index
+from backend.core.engine import get_refractive_index
 
 test_materials = [
     "Vidrio (BK7)", "Sílice (Silica)", "Vidrio Denso (SF10)", "Zafiro Sintético (Al2O3)",

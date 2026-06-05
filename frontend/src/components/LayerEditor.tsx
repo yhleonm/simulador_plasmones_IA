@@ -33,6 +33,7 @@ const LayerEditor: React.FC<Props> = ({
 }) => {
   const [optIndices, setOptIndices] = useState<number[]>([]);
   const [optimizing, setOptimizing] = useState(false);
+  const [optTarget, setOptTarget] = useState<string>('Minimizar Reflectancia');
   
   // Custom optimization bounds state
   const [minBounds, setMinBounds] = useState<{[key: number]: number}>({});
@@ -98,7 +99,8 @@ const LayerEditor: React.FC<Props> = ({
         layers,
         optimize_indices: optIndices,
         bounds_min,
-        bounds_max
+        bounds_max,
+        target: optTarget
       });
       setLayers(result.optimized_layers);
     } catch (error) {
@@ -396,7 +398,7 @@ const LayerEditor: React.FC<Props> = ({
           {index < layers.length - 1 && <Divider sx={{ mt: 2 }} />}
         </Box>
       ))}
-      <Stack component="div" direction="row" spacing={2} sx={{ mt: 2 }}>
+      <Stack component="div" direction="row" spacing={2} sx={{ mt: 2, alignItems: 'center' }}>
         <Button 
           startIcon={<AddIcon />} 
           variant="outlined" 
@@ -404,6 +406,19 @@ const LayerEditor: React.FC<Props> = ({
         >
           Añadir Capa
         </Button>
+        <TextField
+          select
+          label="Objetivo de Optimización"
+          value={optTarget}
+          onChange={(e) => setOptTarget(e.target.value)}
+          size="small"
+          sx={{ width: 220 }}
+          disabled={optimizing}
+        >
+          <MenuItem value="Minimizar Reflectancia">Minimizar Reflectancia</MenuItem>
+          <MenuItem value="Maximizar Sensibilidad">Maximizar Sensibilidad</MenuItem>
+          <MenuItem value="Maximizar FoM">Maximizar FoM</MenuItem>
+        </TextField>
         <Button 
           startIcon={optimizing ? <CircularProgress size={20} /> : <AutoFixHighIcon />} 
           variant="contained" 

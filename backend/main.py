@@ -211,18 +211,77 @@ def simulate_field(req: SimulationWithAngleRequest):
 
 @app.post("/api/optimize", response_model=OptimizationResponse)
 def optimize_structure(req: OptimizationRequest):
+    target = req.target if req.target is not None else "Minimizar Reflectancia"
+    wl = req.wavelength_nm
+    pol = req.polarization
+
     def objective(d_values):
         temp_layers = [L.model_dump() for L in req.layers]
         for i, idx in enumerate(req.optimize_indices):
             temp_layers[idx]['d'] = d_values[i]
         
-        # Fast angular scan to find min R
-        angles = np.linspace(35, 80, 200)
-        min_R = 1.0
-        for th in angles:
-            R, _ = calculate_tmm(req.wavelength_nm, th, temp_layers, req.polarization)
-            if R < min_R: min_R = R
-        return float(min_R)
+        # Fast angular scan to find resonance curve
+        angles_opt = np.linspace(35, 80, 300)
+        rs = []
+        for th in angles_opt:
+            R, _ = calculate_tmm(wl, th, temp_layers, pol)
+            rs.append(R)
+        rs = np.array(rs)
+        
+        min_R = np.min(rs)
+        min_idx = np.argmin(rs)
+        res_angle = angles_opt[min_idx]
+        
+        # Calculate FWHM
+        half_max = (1.0 + min_R) / 2.0
+        left_side = np.where(rs[:min_idx] > half_max)[0]
+        right_side = np.where(rs[min_idx:] > half_max)[0]
+        izq = left_side[-1] if len(left_side) > 0 else 0
+        der = right_side[0] + min_idx if len(right_side) > 0 else len(rs) - 1
+        fwhm = angles_opt[der] - angles_opt[izq]
+        
+        if target == "Minimizar Reflectancia":
+            alpha = 0.05
+            costo_final = min_R + (alpha * fwhm)
+            if fwhm > 15.0:
+                costo_final += 10.0
+            return float(costo_final)
+        else:
+            # Perturb the last layer for Sensitivity/FoM calculations
+            temp_layers_perturbed = [L.copy() for L in temp_layers]
+            n_base_complex = get_refractive_index(temp_layers[-1], wl)
+            n_base = n_base_complex.real
+            k_base = n_base_complex.imag
+            
+            temp_layers_perturbed[-1] = {
+                "material": "Personalizado (Manual)",
+                "d": 0.0,
+                "custom_n": n_base + 0.005,
+                "custom_k": k_base
+            }
+            
+            rs_pert = []
+            for th in angles_opt:
+                R_pert, _ = calculate_tmm(wl, th, temp_layers_perturbed, pol)
+                rs_pert.append(R_pert)
+            rs_pert = np.array(rs_pert)
+            
+            min_idx_pert = np.argmin(rs_pert)
+            res_angle_pert = angles_opt[min_idx_pert]
+            
+            shift = abs(res_angle_pert - res_angle)
+            sens = shift / 0.005  # S = shift / delta_n
+            
+            if min_R > 0.3 or fwhm < 0.1 or fwhm > 15.0:
+                return float(1000.0 + min_R * 100.0)
+                
+            if target == "Maximizar Sensibilidad":
+                return float(-sens + 5.0 * min_R)
+            elif target == "Maximizar FoM":
+                fom = sens / fwhm if fwhm > 0 else 0.0
+                return float(-fom + 5.0 * min_R)
+            
+            return float(min_R)
 
     bounds = []
     for i in range(len(req.optimize_indices)):
@@ -236,9 +295,17 @@ def optimize_structure(req: OptimizationRequest):
     for i, idx in enumerate(req.optimize_indices):
         optimized_layers[idx].d = float(result.x[i])
         
+    # Calculate actual min reflectance of optimized configuration
+    optimized_layers_dump = [L.model_dump() for L in optimized_layers]
+    angles = np.linspace(35, 80, 300)
+    actual_min_R = 1.0
+    for th in angles:
+        R, _ = calculate_tmm(req.wavelength_nm, th, optimized_layers_dump, req.polarization)
+        if R < actual_min_R: actual_min_R = R
+        
     return OptimizationResponse(
         optimized_layers=optimized_layers,
-        min_reflectance=float(result.fun)
+        min_reflectance=float(actual_min_R)
     )
 
 @app.post("/api/simulate/reflectance-2d", response_model=Simulation2DResponse)

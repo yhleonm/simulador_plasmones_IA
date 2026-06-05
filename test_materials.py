@@ -1,7 +1,7 @@
 import os
 import sys
 import numpy as np
-from app import get_refractive_index, calculate_tmm
+from backend.core.engine import get_refractive_index, calculate_tmm
 
 wl = 633.0
 

@@ -1,5 +1,5 @@
 import numpy as np
-from app import calculate_tmm
+from backend.core.engine import calculate_tmm
 
 def analyze(layers, wl, label, angles=np.linspace(35, 80, 5000)):
     rs = [calculate_tmm(wl, th, layers, 'TM')[0] for th in angles]

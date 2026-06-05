@@ -1,42 +1,33 @@
-# Simulador de Resonancia de Plasmones Superficiales (SPR)
+# Simulador SPR - Arquitectura (FastAPI + React)
 
-Este proyecto es una aplicación web interactiva desarrollada con **Streamlit** para simular y optimizar sensores de Resonancia de Plasmones Superficiales (SPR) utilizando el **Método de Matriz de Transferencia (TMM)**.
+Esta es la versión oficial del simulador de plasmones, diseñada para ser rápida, escalable e interactiva.
 
-## 🚀 Características
+## 🚀 Cómo ejecutar
 
-- **Simulación TMM**: Cálculo preciso de reflectancia y transmitancia para estructuras multicapa.
-- **Perfil de Campo**: Visualización de la intensidad del campo eléctrico ($|E|^2$) a través de las interfaces.
-- **Optimización con IA**: Uso de algoritmos de optimización global (como Evolución Diferencial) para encontrar el acoplamiento crítico (R ≈ 0).
-- **Integración de Grafeno**: Modelado de la conductividad óptica del grafeno mediante la formalismo de Kubo.
-- **Base de Datos de Materiales**: Carga de índices de refracción desde archivos CSV (Johnson & Christy).
+### 1. Backend (FastAPI)
+Desde la raíz del proyecto:
 
-## 📁 Estructura del Proyecto
+```bash
+# Instalar dependencias
+pip install -r requirements.txt
 
-- `app.py`: Aplicación principal de Streamlit.
-- `database/`: Contiene archivos CSV con constantes ópticas de materiales (n, k).
-  - `Au_Johnson.csv`: Datos para Oro.
-  - `Ag_Johnson.csv`: Datos para Plata.
-- `requirements.txt`: Lista de dependencias de Python.
-- `calc_sensitivity.py`: Script para calcular la sensibilidad del sensor.
-- `plot_feature_importance.py`: Análisis XAI para entender el impacto de cada parámetro.
-- `verify_graphene.py`: Verificación del modelo de grafeno.
+# Ejecutar servidor
+python -m backend.main
+```
+El backend estará disponible en `http://localhost:8000`. Puedes ver la documentación interactiva en `http://localhost:8000/docs`.
 
-## 🛠️ Instalación
+### 2. Frontend (React + Vite)
+Desde la carpeta `frontend/`:
 
-Para ejecutar el simulador localmente:
+```bash
+# Instalar dependencias
+npm install
 
-1. Instala las dependencias:
+# Ejecutar cliente de desarrollo
+npm run dev
+```
+El frontend estará disponible en `http://localhost:5173`.
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Ejecuta la aplicación:
-
-   ```bash
-   streamlit run app.py
-   ```
-
-## 🎓 Contexto Académico (Tesis)
-
-Este simulador permite el diseño asistido por computadora de biosensores basados en SPR, explorando configuraciones de Kretschmann y Otto. Se pone especial énfasis en el uso de materiales 2D como el grafeno para mejorar la sensibilidad y la estabilidad del sensor.
+## 🛠️ Tecnologías
+- **Backend**: FastAPI, NumPy, SciPy (TMM Engine).
+- **Frontend**: React (TypeScript), Vite, Material UI, Plotly.js.

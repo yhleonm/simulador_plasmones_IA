@@ -24,6 +24,7 @@ export interface OptimizationRequest extends SimulationRequest {
     optimize_indices: number[];
     bounds_min?: number[];
     bounds_max?: number[];
+    target?: string;
 }
 
 export interface ReflectanceResponse {
