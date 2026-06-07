@@ -132,7 +132,7 @@ def simulate_reflectance(req: SimulationRequest):
     sensor_mode = classify_sensor_mode(layers, req.wavelength_nm, req.polarization)
     
     if req.interrogation_mode == "spectral":
-        wls = np.linspace(400, 1000, 600)
+        wls = np.linspace(400, 1000, 300)
         R_vals = []
         phase_tm = []
         phase_te = []
@@ -182,7 +182,7 @@ def simulate_reflectance(req: SimulationRequest):
             phase_diff=phase_diff
         )
     else:
-        angles = np.linspace(30, 85, 800)
+        angles = np.linspace(30, 85, 400)
         R_vals = []
         phase_tm = []
         phase_te = []
