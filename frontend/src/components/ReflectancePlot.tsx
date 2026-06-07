@@ -337,14 +337,14 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
 
           <Divider sx={{ mb: 3 }} />
 
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-            <Typography variant="subtitle1" fontWeight="bold">
+          <Stack direction="row" sx={{ mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
               {plotMode === 'amplitude' ? 'Gráfico de Reflectancia (Amplitud)' : 'Gráfico de Diferencia de Fase (Δφ = φ_TM - φ_TE)'}
             </Typography>
             <ToggleButtonGroup
               value={plotMode}
               exclusive
-              onChange={(e, newMode) => { if (newMode !== null) setPlotMode(newMode); }}
+              onChange={(_, newMode) => { if (newMode !== null) setPlotMode(newMode); }}
               size="small"
               color="primary"
             >
