@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label
 } from 'recharts';
-import { Box, Button, TextField, Paper, Typography, Divider, Stack, CircularProgress } from '@mui/material';
+import { Box, Button, TextField, Paper, Typography, Divider, Stack, CircularProgress, Switch, FormControlLabel } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import type { LayerConfig } from '../types';
 import { simulateKinetics } from '../api/client';
@@ -29,6 +29,11 @@ const KineticsSensorgram: React.FC<Props> = ({
   const [tTotal, setTTotal] = useState(300); // s
   const [dMax, setDMax] = useState(5.0); // nm (Max thickness of adlayer)
   const [nAdlayer, setNAdlayer] = useState(1.45); // Refractive index of biological adlayer
+  
+  // Mass transport states
+  const [flowRate, setFlowRate] = useState(50.0); // uL/min
+  const [diffusionCoef, setDiffusionCoef] = useState(1.0); // 10^-10 m^2/s
+  const [useMassTransport, setUseMassTransport] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [simulatedData, setSimulatedData] = useState<any[] | null>(null);
@@ -49,7 +54,10 @@ const KineticsSensorgram: React.FC<Props> = ({
         t_assoc: tAssoc,
         t_total: tTotal,
         d_max: dMax,
-        n_adlayer: nAdlayer
+        n_adlayer: nAdlayer,
+        flow_rate: flowRate,
+        diffusion_coef: diffusionCoef,
+        use_mass_transport: useMassTransport
       });
       
       setSimulatedData(response.points);
@@ -73,6 +81,11 @@ const KineticsSensorgram: React.FC<Props> = ({
     metadata += `# Tiempo Total: ${tTotal} s\n`;
     metadata += `# Espesor Maximo d_max: ${dMax} nm\n`;
     metadata += `# Indice de Refraccion n_adlayer: ${nAdlayer}\n`;
+    metadata += `# Modelo de Transporte de Masa: ${useMassTransport ? 'Activado (2-Compartimentos)' : 'Desactivado (Langmuir Estandar)'}\n`;
+    if (useMassTransport) {
+      metadata += `#   Velocidad de Flujo: ${flowRate} uL/min\n`;
+      metadata += `#   Coeficiente de Difusion: ${diffusionCoef} x 10^-10 m^2/s\n`;
+    }
     metadata += `# Capas del Sensor:\n`;
     layers.forEach((l, idx) => {
       const thickness = (idx === 0 || idx === layers.length - 1) ? "Semi-infinito" : `${l.d} nm`;
@@ -122,68 +135,120 @@ const KineticsSensorgram: React.FC<Props> = ({
         Se asume que el ligando se une en la superficie creando una capa biomolecular que crece en espesor (hasta un máximo de <strong>d_max</strong>) con un índice de refracción <strong>n_adlayer</strong>.
       </Typography>
       
-      <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <TextField
-          label="Const. Asociación ka (M⁻¹s⁻¹)"
-          type="number"
-          size="small"
-          slotProps={{ htmlInput: { step: 1000 } }}
-          value={ka}
-          onChange={(e) => setKa(Number(e.target.value))}
-        />
-        <TextField
-          label="Const. Disociación kd (s⁻¹)"
-          type="number"
-          size="small"
-          slotProps={{ htmlInput: { step: 0.0001 } }}
-          value={kd}
-          onChange={(e) => setKd(Number(e.target.value))}
-        />
-        <TextField
-          label="Concentración Analito C (M)"
-          type="number"
-          size="small"
-          slotProps={{ htmlInput: { step: 1e-7 } }}
-          value={conc}
-          onChange={(e) => setConc(Number(e.target.value))}
-        />
-        <TextField
-          label="Tiempo de Inyección (s)"
-          type="number"
-          size="small"
-          value={tAssoc}
-          onChange={(e) => setTAssoc(Number(e.target.value))}
-        />
-        <TextField
-          label="Tiempo Total (s)"
-          type="number"
-          size="small"
-          value={tTotal}
-          onChange={(e) => setTTotal(Number(e.target.value))}
-        />
-        <TextField
-          label="Espesor Máx Adcapa d_max (nm)"
-          type="number"
-          size="small"
-          slotProps={{ htmlInput: { step: 0.5 } }}
-          value={dMax}
-          onChange={(e) => setDMax(Number(e.target.value))}
-        />
-        <TextField
-          label="Índice Adcapa n_adlayer"
-          type="number"
-          size="small"
-          slotProps={{ htmlInput: { step: 0.01 } }}
-          value={nAdlayer}
-          onChange={(e) => setNAdlayer(Number(e.target.value))}
-        />
-        
+      <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: '#fafafa' }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 2, color: 'text.secondary' }}>
+          Parámetros Cinéticos & Bioquímicos
+        </Typography>
+        <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2, mb: 2 }}>
+          <TextField
+            label="Const. Asociación ka (M⁻¹s⁻¹)"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { step: 1000 } }}
+            value={ka}
+            onChange={(e) => setKa(Number(e.target.value))}
+          />
+          <TextField
+            label="Const. Disociación kd (s⁻¹)"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { step: 0.0001 } }}
+            value={kd}
+            onChange={(e) => setKd(Number(e.target.value))}
+          />
+          <TextField
+            label="Concentración Analito C (M)"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { step: 1e-7 } }}
+            value={conc}
+            onChange={(e) => setConc(Number(e.target.value))}
+          />
+          <TextField
+            label="Tiempo de Inyección (s)"
+            type="number"
+            size="small"
+            value={tAssoc}
+            onChange={(e) => setTAssoc(Number(e.target.value))}
+          />
+          <TextField
+            label="Tiempo Total (s)"
+            type="number"
+            size="small"
+            value={tTotal}
+            onChange={(e) => setTTotal(Number(e.target.value))}
+          />
+          <TextField
+            label="Espesor Máx Adcapa d_max (nm)"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { step: 0.5 } }}
+            value={dMax}
+            onChange={(e) => setDMax(Number(e.target.value))}
+          />
+          <TextField
+            label="Índice Adcapa n_adlayer"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { step: 0.01 } }}
+            value={nAdlayer}
+            onChange={(e) => setNAdlayer(Number(e.target.value))}
+          />
+        </Stack>
+
+        <Divider sx={{ my: 2 }} />
+
+        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1, color: 'text.secondary' }}>
+          Configuración Microfluídica (Transporte de Masa)
+        </Typography>
+        <Stack direction="row" spacing={3} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch 
+                checked={useMassTransport} 
+                onChange={(e) => setUseMassTransport(e.target.checked)} 
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                Habilitar Limitación por Transporte de Masa (Modelo 2-Compartimentos)
+              </Typography>
+            }
+          />
+          
+          {useMassTransport && (
+            <>
+              <TextField
+                label="Velocidad de Flujo (µL/min)"
+                type="number"
+                size="small"
+                slotProps={{ htmlInput: { min: 1, max: 500, step: 5 } }}
+                sx={{ width: 220 }}
+                value={flowRate}
+                onChange={(e) => setFlowRate(Number(e.target.value))}
+              />
+              <TextField
+                label="Coef. de Difusión D (10⁻¹⁰ m²/s)"
+                type="number"
+                size="small"
+                slotProps={{ htmlInput: { min: 0.01, max: 100, step: 0.1 } }}
+                sx={{ width: 250 }}
+                value={diffusionCoef}
+                onChange={(e) => setDiffusionCoef(Number(e.target.value))}
+              />
+            </>
+          )}
+        </Stack>
+      </Paper>
+
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
         <Button 
           variant="contained" 
           onClick={runSimulation}
-          size="medium"
+          size="large"
           disabled={loading || layers.length === 0}
-          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
+          startIcon={loading ? <CircularProgress size={24} color="inherit" /> : null}
         >
           {loading ? 'Calculando TMM...' : 'Simular Sensograma'}
         </Button>
@@ -193,7 +258,7 @@ const KineticsSensorgram: React.FC<Props> = ({
             variant="outlined" 
             startIcon={<DownloadIcon />} 
             onClick={exportToCSV}
-            size="medium"
+            size="large"
             sx={{ ml: 'auto' }}
           >
             Exportar CSV

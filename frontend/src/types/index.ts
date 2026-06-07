@@ -92,6 +92,9 @@ export interface KineticsRequest {
     t_total: number;
     d_max: number;
     n_adlayer: number;
+    flow_rate?: number;
+    diffusion_coef?: number;
+    use_mass_transport?: boolean;
 }
 
 export interface PDPPoint {

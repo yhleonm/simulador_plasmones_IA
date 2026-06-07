@@ -88,6 +88,9 @@ class KineticsRequest(BaseModel):
     t_total: float = Field(300, description="Total simulation time (s)")
     d_max: float = Field(5.0, description="Maximum adlayer thickness (nm)")
     n_adlayer: float = Field(1.45, description="Refractive index of bound adlayer")
+    flow_rate: Optional[float] = Field(50.0, description="Flow rate in uL/min")
+    diffusion_coef: Optional[float] = Field(1.0, description="Diffusion coefficient in 10^-10 m^2/s")
+    use_mass_transport: Optional[bool] = Field(True, description="Enable two-compartment mass transport model")
 
 class KineticsPoint(BaseModel):
     time: float

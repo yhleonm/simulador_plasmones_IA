@@ -401,7 +401,7 @@ def simulate_kinetics(req: KineticsRequest):
     # Determine the time grid (e.g., 100 points for a smooth and fast plot)
     t_vals = np.linspace(0, req.t_total, 120)
     
-    # Precalculate Langmuir kinetics
+    # Precalculate Langmuir parameters
     ka = req.ka
     kd = req.kd
     c = req.concentration
@@ -411,6 +411,55 @@ def simulate_kinetics(req: KineticsRequest):
     rate = ka * c + kd
     theta_assoc = eq_ratio * (1.0 - np.exp(-rate * t_assoc))
     
+    # 0. Solve for coverage ratio (ratio_vals)
+    ratio_vals = []
+    if req.use_mass_transport:
+        # F: Flow rate in uL/min, D: Diffusion coef in 10^-10 m^2/s
+        F = req.flow_rate if req.flow_rate is not None else 50.0
+        D = req.diffusion_coef if req.diffusion_coef is not None else 1.0
+        
+        # Calculate mass transport coefficient km (s^-1)
+        # Empirical scaling: at D=1, F=50, km = 15.0 s^-1
+        km = 15.0 * (D ** (2.0 / 3.0)) * ((F / 50.0) ** (1.0 / 3.0))
+        
+        # Equivalent maximum surface concentration capacity (M)
+        beta = 1e-5
+        
+        # Sub-stepped Euler integration for numerical stability
+        steps = 6000
+        dt = req.t_total / steps
+        theta = 0.0
+        c_s = 0.0
+        t = 0.0
+        current_step = 0
+        
+        for t_target in t_vals:
+            while t < t_target and current_step < steps:
+                c_bulk = c if t <= t_assoc else 0.0
+                
+                # Derivatives
+                dtheta_dt = ka * c_s * (1.0 - theta) - kd * theta
+                dcs_dt = km * (c_bulk - c_s) - beta * dtheta_dt
+                
+                # Integration
+                theta += dtheta_dt * dt
+                c_s += dcs_dt * dt
+                
+                # Physical bounds
+                theta = max(0.0, min(1.0, theta))
+                c_s = max(0.0, c_s)
+                
+                t += dt
+                current_step += 1
+            ratio_vals.append(theta)
+    else:
+        for t in t_vals:
+            if t <= t_assoc:
+                ratio = eq_ratio * (1.0 - np.exp(-rate * t))
+            else:
+                ratio = theta_assoc * np.exp(-kd * (t - t_assoc))
+            ratio_vals.append(ratio)
+            
     original_layers = [L.model_dump() for L in req.layers]
     
     # Helper to find resonance with full scan
@@ -463,13 +512,9 @@ def simulate_kinetics(req: KineticsRequest):
     points = []
     
     # 2. Run simulation over time
-    for t in t_vals:
-        # Calculate coverage ratio using analytical Langmuir equation
-        if t <= t_assoc:
-            ratio = eq_ratio * (1.0 - np.exp(-rate * t))
-        else:
-            ratio = theta_assoc * np.exp(-kd * (t - t_assoc))
-            
+    for idx, t in enumerate(t_vals):
+        ratio = ratio_vals[idx]
+        
         # Adlayer thickness is proportional to coverage
         d_adlayer = req.d_max * ratio
         
