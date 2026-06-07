@@ -231,9 +231,10 @@ def get_refractive_index(layer_info, wavelength_nm, temperature_c=20.0):
         "Aire / Vacío": -9.0e-7,
     }
     
-    dn_dt = dn_dt_map.get(material, 0.0)
-    if "custom_dn_dt" in layer_info and layer_info["custom_dn_dt"] is not None:
-        dn_dt = float(layer_info["custom_dn_dt"])
+    if material == "Personalizado (Manual)":
+        dn_dt = float(layer_info.get("custom_dn_dt", 0.0) or 0.0)
+    else:
+        dn_dt = dn_dt_map.get(material, 0.0)
         
     delta_t = float(temperature_c) - 20.0
     if delta_t != 0.0 and dn_dt != 0.0:
