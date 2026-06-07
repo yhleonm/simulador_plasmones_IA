@@ -10,6 +10,7 @@ export interface LayerConfig {
     matrix_material?: string;
     inclusion_material?: string;
     model_type?: 'bruggeman' | 'maxwell-garnett';
+    custom_dn_dt?: number;
 }
 
 export interface SimulationRequest {
@@ -18,6 +19,7 @@ export interface SimulationRequest {
     layers: LayerConfig[];
     interrogation_mode?: 'angular' | 'spectral';
     fixed_angle_deg?: number;
+    temperature_c?: number;
 }
 
 export interface OptimizationRequest extends SimulationRequest {
@@ -154,6 +156,20 @@ export interface XAIRequest {
     bounds_min: number[];
     bounds_max: number[];
 }
+
+export interface ThermalSweepCurve {
+    temperature_c: number;
+    reflectance: number[];
+    resonance_angle?: number;
+    resonance_wavelength?: number;
+}
+
+export interface ThermalSweepResponse {
+    angles?: number[];
+    wavelengths?: number[];
+    curves: ThermalSweepCurve[];
+}
+
 
 
 

@@ -215,8 +215,33 @@ def parse_refractive_index_csv(content_str: str):
             
     return df_final
 
-def get_refractive_index(layer_info, wavelength_nm):
-    """Devuelve n + ik."""
+def get_refractive_index(layer_info, wavelength_nm, temperature_c=20.0):
+    """Devuelve n + ik con corrección por temperatura (termo-óptica)."""
+    n_base = _get_refractive_index_base(layer_info, wavelength_nm, temperature_c)
+    
+    material = layer_info.get("material", "")
+    dn_dt_map = {
+        "Vidrio (BK7)": 3.0e-6,
+        "Sílice (Silica)": 1.2e-5,
+        "Dióxido de Silicio (SiO2)": 1.0e-5,
+        "Agua (H2O)": -8.0e-5,
+        "Agua": -8.0e-5,
+        "Glicerina": -3.6e-4,
+        "Aire / Vacio": -9.0e-7,
+        "Aire / Vacío": -9.0e-7,
+    }
+    
+    dn_dt = dn_dt_map.get(material, 0.0)
+    if "custom_dn_dt" in layer_info and layer_info["custom_dn_dt"] is not None:
+        dn_dt = float(layer_info["custom_dn_dt"])
+        
+    delta_t = float(temperature_c) - 20.0
+    if delta_t != 0.0 and dn_dt != 0.0:
+        return (n_base.real + dn_dt * delta_t) + 1j * n_base.imag
+    return n_base
+
+def _get_refractive_index_base(layer_info, wavelength_nm, temperature_c=20.0):
+    """Lógica base para resolver n + ik a 20°C (con recursión para medios efectivos)."""
     wl = wavelength_nm
     
     # Check if this layer is an effective medium (porous/composite layer)
@@ -230,8 +255,8 @@ def get_refractive_index(layer_info, wavelength_nm):
         info_a = {**layer_info, 'material': mat_a, 'is_effective_medium': False}
         info_b = {**layer_info, 'material': mat_b, 'is_effective_medium': False}
         
-        n_a = get_refractive_index(info_a, wavelength_nm)
-        n_b = get_refractive_index(info_b, wavelength_nm)
+        n_a = get_refractive_index(info_a, wavelength_nm, temperature_c)
+        n_b = get_refractive_index(info_b, wavelength_nm, temperature_c)
         
         eps_a = n_a ** 2
         eps_b = n_b ** 2
@@ -312,12 +337,12 @@ def get_refractive_index(layer_info, wavelength_nm):
 
     return 1.5 + 0j
 
-def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient=False):
-    """Calcula Reflectancia y Transmitancia usando TMM."""
+def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient=False, temperature_c=20.0):
+    """Calcula Reflectancia y Transmitancia usando TMM con ajuste termo-óptico."""
     k0 = 2 * np.pi / wavelength_nm
     theta_rad = np.radians(theta_deg)
     
-    ns = [get_refractive_index(L, wavelength_nm) for L in layers]
+    ns = [get_refractive_index(L, wavelength_nm, temperature_c) for L in layers]
     ds = [L['d'] for L in layers]
     materials = [L['material'] for L in layers]
     
@@ -389,12 +414,12 @@ def calculate_fwhm(angles, reflectance, res_angle):
     except:
         return 0
 
-def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM', return_complex=False):
-    """Calcula la intensidad del campo eléctrico total (|E|^2) a través de las capas."""
+def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM', return_complex=False, temperature_c=20.0):
+    """Calcula la intensidad del campo eléctrico total (|E|^2) a través de las capas con ajuste térmico."""
     k0 = 2 * np.pi / wavelength_nm
     theta_rad = np.radians(theta_deg)
     
-    ns = [get_refractive_index(L, wavelength_nm) for L in layers]
+    ns = [get_refractive_index(L, wavelength_nm, temperature_c) for L in layers]
     ds = [L['d'] for L in layers]
     n0 = ns[0]
     sin0 = np.sin(theta_rad)

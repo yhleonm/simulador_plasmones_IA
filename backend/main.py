@@ -9,7 +9,8 @@ from backend.models.schemas import (
     FieldProfileResponse, OptimizationRequest, OptimizationResponse, 
     Simulation2DRequest, Simulation2DResponse, KineticsRequest, 
     KineticsResponse, XAIRequest, XAIResponse, CurveFitRequest, 
-    CurveFitResponse, FitParameterConfig
+    CurveFitResponse, FitParameterConfig, ThermalSweepResponse, 
+    ThermalSweepCurve
 )
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution, minimize
@@ -140,8 +141,8 @@ def simulate_reflectance(req: SimulationRequest):
         
         try:
             for wl in wls:
-                R_tm, _, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True)
-                R_te, _, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True)
+                R_tm, _, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+                R_te, _, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
                 
                 # Reflectance for the selected polarization
                 R = R_tm if req.polarization == 'TM' else R_te
@@ -189,8 +190,8 @@ def simulate_reflectance(req: SimulationRequest):
         
         try:
             for theta in angles:
-                R_tm, _, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True)
-                R_te, _, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True)
+                R_tm, _, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+                R_te, _, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
                 
                 # Reflectance for the selected polarization
                 R = R_tm if req.polarization == 'TM' else R_te
@@ -237,7 +238,7 @@ def simulate_field(req: SimulationWithAngleRequest):
     layers = [layer.model_dump() for layer in req.layers]
     
     z, E_sq, E_complex = calculate_field_profile(
-        req.wavelength_nm, req.theta_deg, layers, req.polarization, return_complex=True
+        req.wavelength_nm, req.theta_deg, layers, req.polarization, return_complex=True, temperature_c=req.temperature_c
     )
     
     # Calculate layer boundaries and collect materials
@@ -836,6 +837,57 @@ def fit_curve(req: CurveFitRequest):
         y_sim=y_sim,
         y_initial=y_initial
     )
+
+
+@app.post("/api/simulate/thermal-sweep", response_model=ThermalSweepResponse)
+def simulate_thermal_sweep(req: SimulationRequest):
+    layers = [layer.model_dump() for layer in req.layers]
+    temperatures = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    curves = []
+    
+    if req.interrogation_mode == "spectral":
+        wls = np.linspace(400, 1000, 300)
+        fixed_angle = req.fixed_angle_deg if req.fixed_angle_deg is not None else 45.0
+        
+        for temp in temperatures:
+            R_vals = []
+            for wl in wls:
+                # We use TM or TE based on request polarization
+                pol = req.polarization
+                R_tm, _ = calculate_tmm(wl, fixed_angle, layers, pol, temperature_c=temp)
+                R_vals.append(float(R_tm))
+            min_idx = np.argmin(R_vals)
+            res_wl = float(wls[min_idx])
+            curves.append(ThermalSweepCurve(
+                temperature_c=temp,
+                reflectance=R_vals,
+                resonance_wavelength=res_wl
+            ))
+            
+        return ThermalSweepResponse(
+            wavelengths=wls.tolist(),
+            curves=curves
+        )
+    else:
+        angles = np.linspace(30, 85, 400)
+        for temp in temperatures:
+            R_vals = []
+            for theta in angles:
+                pol = req.polarization
+                R_tm, _ = calculate_tmm(req.wavelength_nm, theta, layers, pol, temperature_c=temp)
+                R_vals.append(float(R_tm))
+            min_idx = np.argmin(R_vals)
+            res_angle = float(angles[min_idx])
+            curves.append(ThermalSweepCurve(
+                temperature_c=temp,
+                reflectance=R_vals,
+                resonance_angle=res_angle
+            ))
+            
+        return ThermalSweepResponse(
+            angles=angles.tolist(),
+            curves=curves
+        )
 
 
 if __name__ == "__main__":

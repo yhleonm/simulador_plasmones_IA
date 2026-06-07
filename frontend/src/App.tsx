@@ -11,6 +11,7 @@ import KineticsSensorgram from './components/KineticsSensorgram';
 import Reflectance2DMap from './components/Reflectance2DMap';
 import XAIPanel from './components/XAIPanel';
 import CurveFittingPanel from './components/CurveFittingPanel';
+import ThermalAnalysisPanel from './components/ThermalAnalysisPanel';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -303,7 +304,8 @@ export default function App() {
           <Tabs 
             value={tabValue} 
             onChange={(_, v) => setTabValue(v)} 
-            variant="fullWidth"
+            variant="scrollable"
+            scrollButtons="auto"
             indicatorColor="primary"
             textColor="primary"
           >
@@ -313,6 +315,7 @@ export default function App() {
             <Tab label="Mapa de Dispersión 2D" />
             <Tab label="Análisis IA (XAI)" />
             <Tab label="Ajuste de Curvas / Solver Inverso" />
+            <Tab label="Análisis Termo-Óptico" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -359,6 +362,15 @@ export default function App() {
               <CurveFittingPanel 
                 layers={layers}
                 setLayers={setLayers}
+                wavelength={wavelength}
+                polarization={polarization}
+                interrogationMode={interrogationMode}
+                fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 6 && (
+              <ThermalAnalysisPanel 
+                layers={layers}
                 wavelength={wavelength}
                 polarization={polarization}
                 interrogationMode={interrogationMode}

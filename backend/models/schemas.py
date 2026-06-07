@@ -15,6 +15,7 @@ class LayerConfig(BaseModel):
     matrix_material: Optional[str] = "Vidrio (BK7)"
     inclusion_material: Optional[str] = "Aire / Vacio"
     model_type: Optional[str] = "bruggeman"
+    custom_dn_dt: Optional[float] = 0.0
 
 class SimulationRequest(BaseModel):
     wavelength_nm: float = Field(..., gt=0)
@@ -22,6 +23,7 @@ class SimulationRequest(BaseModel):
     layers: List[LayerConfig]
     interrogation_mode: Optional[str] = "angular"
     fixed_angle_deg: Optional[float] = 45.0
+    temperature_c: Optional[float] = 20.0
 
 class SimulationWithAngleRequest(SimulationRequest):
     theta_deg: float = Field(..., ge=0, le=90)
@@ -152,6 +154,19 @@ class CurveFitResponse(BaseModel):
     rmse: float
     y_sim: List[float]
     y_initial: List[float]
+
+
+class ThermalSweepCurve(BaseModel):
+    temperature_c: float
+    reflectance: List[float]
+    resonance_angle: Optional[float] = None
+    resonance_wavelength: Optional[float] = None
+
+class ThermalSweepResponse(BaseModel):
+    angles: Optional[List[float]] = None
+    wavelengths: Optional[List[float]] = None
+    curves: List[ThermalSweepCurve]
+
 
 
 
