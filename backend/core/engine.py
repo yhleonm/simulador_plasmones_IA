@@ -389,7 +389,7 @@ def calculate_fwhm(angles, reflectance, res_angle):
     except:
         return 0
 
-def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM'):
+def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM', return_complex=False):
     """Calcula la intensidad del campo eléctrico total (|E|^2) a través de las capas."""
     k0 = 2 * np.pi / wavelength_nm
     theta_rad = np.radians(theta_deg)
@@ -436,6 +436,7 @@ def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM'):
     # Paso 2: Propagación del campo
     z_points = []
     E_sq = []
+    E_complex = []
     
     # Inicialización en la interfaz 0/1
     # Vector de transferencia [E, H]
@@ -450,6 +451,7 @@ def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM'):
     E_prisma = np.exp(1j * kz0 * z_pre) + r * np.exp(-1j * kz0 * z_pre)
     z_points.extend(z_pre.tolist())
     E_sq.extend(np.abs(E_prisma)**2)
+    E_complex.extend(E_prisma.tolist())
     
     current_z = 0
     for i in range(1, len(ns)-1):
@@ -467,6 +469,7 @@ def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM'):
         
         z_points.extend((current_z + z_layer).tolist())
         E_sq.extend(np.abs(Ei)**2)
+        E_complex.extend(Ei.tolist())
         
         # Mover al final de la capa para la siguiente interfaz
         Mi, _, _ = get_layer_matrix(ns[i], ds[i], pol, n0, sin0, k0)
@@ -482,5 +485,8 @@ def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM'):
     
     z_points.extend((current_z + z_post).tolist())
     E_sq.extend(np.abs(EN)**2)
+    E_complex.extend(EN.tolist())
     
+    if return_complex:
+        return np.array(z_points), np.array(E_sq), np.array(E_complex)
     return np.array(z_points), np.array(E_sq)

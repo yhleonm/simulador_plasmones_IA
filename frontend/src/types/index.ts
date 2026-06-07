@@ -51,6 +51,8 @@ export interface FieldProfileResponse {
     penetration_depth?: number;
     propagation_length?: number;
     enhancement_factor?: number;
+    field_2d?: number[][];
+    x_2d?: number[];
 }
 
 export interface Simulation2DRequest {

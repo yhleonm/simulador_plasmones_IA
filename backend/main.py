@@ -230,8 +230,8 @@ def simulate_reflectance(req: SimulationRequest):
 def simulate_field(req: SimulationWithAngleRequest):
     layers = [layer.model_dump() for layer in req.layers]
     
-    z, E_sq = calculate_field_profile(
-        req.wavelength_nm, req.theta_deg, layers, req.polarization
+    z, E_sq, E_complex = calculate_field_profile(
+        req.wavelength_nm, req.theta_deg, layers, req.polarization, return_complex=True
     )
     
     # Calculate layer boundaries and collect materials
@@ -291,6 +291,25 @@ def simulate_field(req: SimulationWithAngleRequest):
     except Exception as e:
         print(f"Error calculating field profile parameters: {e}")
         
+    # 2D Field Map Calculation
+    field_2d = None
+    x_2d_list = None
+    try:
+        k0 = 2 * np.pi / req.wavelength_nm
+        n0 = get_refractive_index(layers[0], req.wavelength_nm)
+        sin0 = np.sin(np.radians(req.theta_deg))
+        kx = k0 * n0 * sin0
+        
+        x_2d = np.linspace(0, 1000, 100)
+        # Vectorized outer-product for fast 2D field computation
+        phase_factor = np.exp(1j * kx * x_2d)
+        field_matrix_2d = np.real(E_complex[:, np.newaxis] * phase_factor[np.newaxis, :])
+        
+        field_2d = field_matrix_2d.tolist()
+        x_2d_list = x_2d.tolist()
+    except Exception as e:
+        print(f"Error calculating 2D field map: {e}")
+
     return FieldProfileResponse(
         z=z.tolist(),
         E_sq=E_sq.tolist(),
@@ -298,7 +317,9 @@ def simulate_field(req: SimulationWithAngleRequest):
         materials=materials,
         penetration_depth=penetration_depth,
         propagation_length=propagation_length,
-        enhancement_factor=enhancement_factor
+        enhancement_factor=enhancement_factor,
+        field_2d=field_2d,
+        x_2d=x_2d_list
     )
 
 @app.post("/api/optimize", response_model=OptimizationResponse)

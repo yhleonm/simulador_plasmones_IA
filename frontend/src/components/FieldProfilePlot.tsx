@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label, ReferenceArea
 } from 'recharts';
-import { Box, Button, CircularProgress, TextField, Stack, Paper, Typography, Divider } from '@mui/material';
+import { Box, Button, CircularProgress, TextField, Stack, Paper, Typography, Divider, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import { simulateFieldProfile } from '../api/client';
 import type { LayerConfig, FieldProfileResponse } from '../types';
@@ -17,6 +17,116 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
   const [data, setData] = useState<FieldProfileResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [theta, setTheta] = useState(44.0);
+  const [viewMode, setViewMode] = useState<'1d' | '2d'>('1d');
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (viewMode !== '2d' || !data || !data.field_2d || !data.x_2d) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const field2D = data.field_2d;
+    const zVals = data.z;
+    const layerBounds = data.layer_bounds;
+    const materials = data.materials;
+
+    const Nz = field2D.length;
+    const Nx = field2D[0].length;
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+
+    // Find min and max of the field for color scaling
+    let minVal = Infinity;
+    let maxVal = -Infinity;
+    for (let i = 0; i < Nz; i++) {
+      for (let j = 0; j < Nx; j++) {
+        const val = field2D[i][j];
+        if (val < minVal) minVal = val;
+        if (val > maxVal) maxVal = val;
+      }
+    }
+
+    const range = maxVal - minVal || 1;
+
+    // Create an image data buffer for fast rendering
+    const imgData = ctx.createImageData(Nx, Nz);
+    for (let zIdx = 0; zIdx < Nz; zIdx++) {
+      const y = Nz - 1 - zIdx; // Invert vertically (Prism at bottom)
+      for (let xIdx = 0; xIdx < Nx; xIdx++) {
+        const val = field2D[zIdx][xIdx];
+        const norm = (val - minVal) / range;
+        
+        let r = 0, g = 0, b = 0;
+        // Premium Plasma color scheme
+        if (norm < 0.5) {
+          const t = norm * 2;
+          r = Math.floor(13 + (240 - 13) * t);
+          g = Math.floor(8 + (80 - 8) * t);
+          b = Math.floor(135 + (138 - 135) * t);
+        } else {
+          const t = (norm - 0.5) * 2;
+          r = Math.floor(240 + (254 - 240) * t);
+          g = Math.floor(80 + (224 - 80) * t);
+          b = Math.floor(138 + (139 - 138) * t);
+        }
+
+        const pixelIdx = (y * Nx + xIdx) * 4;
+        imgData.data[pixelIdx] = r;
+        imgData.data[pixelIdx + 1] = g;
+        imgData.data[pixelIdx + 2] = b;
+        imgData.data[pixelIdx + 3] = 255;
+      }
+    }
+
+    // Scale to main canvas
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = Nx;
+    tempCanvas.height = Nz;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (tempCtx) {
+      tempCtx.putImageData(imgData, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      ctx.drawImage(tempCanvas, 0, 0, canvasWidth, canvasHeight);
+    }
+
+    // Overlay layer boundaries
+    const zMin = zVals[0];
+    const zMax = zVals[Nz - 1];
+    const zRange = zMax - zMin;
+
+    layerBounds.forEach((bound, idx) => {
+      const y = canvasHeight * (1 - (bound - zMin) / zRange);
+      
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvasWidth, y);
+      ctx.stroke();
+
+      // Text label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px Inter, Roboto, sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(materials[idx + 1] || "", 15, y - 6);
+      ctx.shadowBlur = 0;
+    });
+
+    // Substrate and Superstrate labels
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px Inter, Roboto, sans-serif';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(`${materials[0]} (Sustrato)`, 15, canvasHeight - 15);
+    ctx.fillText(`${materials[materials.length - 1]} (Superstrato)`, 15, 25);
+    ctx.shadowBlur = 0;
+
+  }, [viewMode, data]);
 
   const handleSimulate = async () => {
     setLoading(true);
@@ -135,91 +245,134 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
 
         return (
           <Box>
-            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-              Intensidad del Campo Eléctrico Normalizado (|E|²) @ {theta}°
-            </Typography>
-            <Paper variant="outlined" sx={{ height: 450, p: 2, bgcolor: '#fff', position: 'relative' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 25 }}>
-                  <defs>
-                    <linearGradient id="evanescentGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#9c27b0" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="#9c27b0" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis 
-                    dataKey="z" 
-                    type="number" 
-                    domain={['auto', 'auto']}
-                    tick={{ fontSize: 11 }}
-                  >
-                    <Label value="Posición z (nm)" offset={-15} position="insideBottom" />
-                  </XAxis>
-                  <YAxis tick={{ fontSize: 11 }}>
-                    <Label value="Intensidad |E|²" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
-                  </YAxis>
-                  <Tooltip 
-                    formatter={(value: any) => Number(value).toFixed(4)}
-                    labelFormatter={(label: any) => `z: ${Number(label).toFixed(1)} nm`}
-                  />
-                  {lastBoundary !== undefined && chartData.length > 0 && (
-                    <ReferenceArea 
-                      x1={lastBoundary} 
-                      x2={chartData[chartData.length - 1]?.z} 
-                      fill="url(#evanescentGrad)" 
-                      ifOverflow="visible"
-                    />
-                  )}
-                  <Area 
-                    type="monotone" 
-                    dataKey="Esq" 
-                    name="|E|²"
-                    stroke="#1976d2" 
-                    fill="#bbdefb"
-                    fillOpacity={0.6}
-                    strokeWidth={2} 
-                    isAnimationActive={false}
-                  />
-                  {data.layer_bounds.map((bound, idx) => (
-                    <ReferenceLine 
-                      key={idx} 
-                      x={bound} 
-                      stroke="#555" 
-                      strokeWidth={1.5}
-                      strokeDasharray="4 4"
-                    >
-                      <Label 
-                        value={data.materials[idx+1] || ""} 
-                        position="insideTopRight" 
-                        fill="#555" 
-                        fontSize={10}
-                        angle={-90}
-                        offset={10}
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="body2" color="textSecondary" sx={{ fontWeight: 'bold' }}>
+                Distribución del Campo Eléctrico Normalizado @ {theta}°
+              </Typography>
+              <ToggleButtonGroup
+                value={viewMode}
+                exclusive
+                onChange={(_, mode) => { if (mode !== null) setViewMode(mode); }}
+                size="small"
+                color="primary"
+              >
+                <ToggleButton value="1d" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Perfil 1D (|E|²)</ToggleButton>
+                <ToggleButton value="2d" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Mapa de Campo 2D (Frentes de Onda)</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+
+            <Paper variant="outlined" sx={{ height: 450, p: 2, bgcolor: '#fff', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              {viewMode === '1d' ? (
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 25 }}>
+                      <defs>
+                        <linearGradient id="evanescentGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#9c27b0" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="#9c27b0" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis 
+                        dataKey="z" 
+                        type="number" 
+                        domain={['auto', 'auto']}
+                        tick={{ fontSize: 11 }}
+                      >
+                        <Label value="Posición z (nm)" offset={-15} position="insideBottom" />
+                      </XAxis>
+                      <YAxis tick={{ fontSize: 11 }}>
+                        <Label value="Intensidad |E|²" angle={-90} position="insideLeft" style={{ textAnchor: 'middle' }} />
+                      </YAxis>
+                      <Tooltip 
+                        formatter={(value: any) => Number(value).toFixed(4)}
+                        labelFormatter={(label: any) => `z: ${Number(label).toFixed(1)} nm`}
                       />
-                    </ReferenceLine>
-                  ))}
-                  {lp !== null && (
-                    <ReferenceLine x={lastBoundary + lp} stroke="#9c27b0" strokeWidth={1.5} strokeDasharray="3 3">
-                      <Label value={`L_p = ${lp.toFixed(1)} nm`} position="top" fill="#9c27b0" fontSize={10} />
-                    </ReferenceLine>
-                  )}
-                </AreaChart>
-              </ResponsiveContainer>
-              
-              {/* Etiquetas de las regiones semi-infinitas */}
-              <Typography 
-                variant="caption" 
-                sx={{ position: 'absolute', left: 50, top: 40, color: 'text.secondary', fontWeight: 'bold' }}
-              >
-                {data.materials[0]} (Sustrato)
-              </Typography>
-              <Typography 
-                variant="caption" 
-                sx={{ position: 'absolute', right: 50, top: 40, color: 'text.secondary', fontWeight: 'bold' }}
-              >
-                {data.materials[data.materials.length - 1]} (Superstrato)
-              </Typography>
+                      {lastBoundary !== undefined && chartData.length > 0 && (
+                        <ReferenceArea 
+                          x1={lastBoundary} 
+                          x2={chartData[chartData.length - 1]?.z} 
+                          fill="url(#evanescentGrad)" 
+                          ifOverflow="visible"
+                        />
+                      )}
+                      <Area 
+                        type="monotone" 
+                        dataKey="Esq" 
+                        name="|E|²"
+                        stroke="#1976d2" 
+                        fill="#bbdefb"
+                        fillOpacity={0.6}
+                        strokeWidth={2} 
+                        isAnimationActive={false}
+                      />
+                      {data.layer_bounds.map((bound, idx) => (
+                        <ReferenceLine 
+                          key={idx} 
+                          x={bound} 
+                          stroke="#555" 
+                          strokeWidth={1.5}
+                          strokeDasharray="4 4"
+                        >
+                          <Label 
+                            value={data.materials[idx+1] || ""} 
+                            position="insideTopRight" 
+                            fill="#555" 
+                            fontSize={10}
+                            angle={-90}
+                            offset={10}
+                          />
+                        </ReferenceLine>
+                      ))}
+                      {lp !== null && (
+                        <ReferenceLine x={lastBoundary + lp} stroke="#9c27b0" strokeWidth={1.5} strokeDasharray="3 3">
+                          <Label value={`L_p = ${lp.toFixed(1)} nm`} position="top" fill="#9c27b0" fontSize={10} />
+                        </ReferenceLine>
+                      )}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Etiquetas de las regiones semi-infinitas */}
+                  <Typography 
+                    variant="caption" 
+                    sx={{ position: 'absolute', left: 50, top: 40, color: 'text.secondary', fontWeight: 'bold' }}
+                  >
+                    {data.materials[0]} (Sustrato)
+                  </Typography>
+                  <Typography 
+                    variant="caption" 
+                    sx={{ position: 'absolute', right: 50, top: 40, color: 'text.secondary', fontWeight: 'bold' }}
+                  >
+                    {data.materials[data.materials.length - 1]} (Superstrato)
+                  </Typography>
+                </>
+              ) : (
+                data.field_2d && data.x_2d ? (
+                  <Box sx={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <canvas 
+                      ref={canvasRef} 
+                      width={650} 
+                      height={380} 
+                      style={{ maxWidth: '100%', maxHeight: '100%', border: '1px solid #e0e0e0', borderRadius: 4, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                    />
+                    <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'center', gap: 3 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#0d0887', borderRadius: 2 }} /> Campo Mínimo (-)
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#f0508a', borderRadius: 2 }} /> Cero
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#febb2b', borderRadius: 2 }} /> Campo Máximo (+)
+                      </Typography>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    Mapa de campo 2D no disponible para esta configuración.
+                  </Typography>
+                )
+              )}
             </Paper>
 
             <Box sx={{ mt: 3, mb: 2 }}>
