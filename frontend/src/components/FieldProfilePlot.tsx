@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Label, ReferenceArea
 } from 'recharts';
 import { Box, Button, CircularProgress, TextField, Stack, Paper, Typography, Divider } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -132,6 +132,12 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
             <Paper variant="outlined" sx={{ height: 450, p: 2, bgcolor: '#fff', position: 'relative' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 25 }}>
+                  <defs>
+                    <linearGradient id="evanescentGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#9c27b0" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#9c27b0" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis 
                     dataKey="z" 
@@ -148,6 +154,14 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
                     formatter={(value: any) => Number(value).toFixed(4)}
                     labelFormatter={(label: any) => `z: ${Number(label).toFixed(1)} nm`}
                   />
+                  {lastBoundary !== undefined && chartData.length > 0 && (
+                    <ReferenceArea 
+                      x1={lastBoundary} 
+                      x2={chartData[chartData.length - 1]?.z} 
+                      fill="url(#evanescentGrad)" 
+                      ifOverflow="visible"
+                    />
+                  )}
                   <Area 
                     type="monotone" 
                     dataKey="Esq" 
@@ -199,14 +213,39 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
               </Typography>
             </Paper>
 
-            {lp !== null && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: '#f3e5f5', borderRadius: 1, borderLeft: '5px solid #9c27b0', mb: 2 }}>
-                <Typography variant="body2">
-                  <strong>Profundidad de Penetración Evanescente (L_p):</strong> {lp.toFixed(1)} nm. 
-                  Esta es la distancia en la cual la intensidad del campo disminuye a 1/e (36.8%) de su valor superficial en el medio de detección. Define el rango efectivo del sensor para detectar analitos y biomoléculas.
-                </Typography>
-              </Box>
-            )}
+            <Box sx={{ mt: 3, mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1.5, color: 'text.primary' }}>
+                Análisis de Penetración Evanescente
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                {data.penetration_depth !== undefined && data.penetration_depth !== null && (
+                  <Paper variant="outlined" sx={{ p: 2, flex: 1, borderLeft: '5px solid #9c27b0', bgcolor: '#fbf7fc' }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
+                      PROFUNDIDAD DE PENETRACIÓN ANALÍTICA (L)
+                    </Typography>
+                    <Typography variant="h5" color="secondary" sx={{ fontWeight: 'bold', my: 1 }}>
+                      {data.penetration_depth.toFixed(1)} nm
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Distancia teórica a la cual la <strong>amplitud del campo eléctrico</strong> decae a 1/e (36.8%) de su valor en la interfaz. Clave para evaluar el acoplamiento con analitos voluminosos como proteínas o virus.
+                    </Typography>
+                  </Paper>
+                )}
+                {lp !== null && (
+                  <Paper variant="outlined" sx={{ p: 2, flex: 1, borderLeft: '5px solid #1976d2', bgcolor: '#f5f9ff' }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
+                      PROFUNDIDAD DE DECAIMIENTO DE INTENSIDAD (Lp)
+                    </Typography>
+                    <Typography variant="h5" color="primary" sx={{ fontWeight: 'bold', my: 1 }}>
+                      {lp.toFixed(1)} nm
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Distancia calculada donde la <strong>intensidad del campo (|E|²)</strong> se reduce a 1/e (36.8%). En un medio dieléctrico transparente, equivale exactamente a la mitad de L (L/2 = {(data.penetration_depth ? (data.penetration_depth / 2) : (lp)).toFixed(1)} nm).
+                    </Typography>
+                  </Paper>
+                )}
+              </Stack>
+            </Box>
 
             <Box sx={{ mt: 2, p: 2, bgcolor: '#e3f2fd', borderRadius: 1 }}>
               <Typography variant="caption" sx={{ display: 'block' }}>

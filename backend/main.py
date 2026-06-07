@@ -244,11 +244,32 @@ def simulate_field(req: SimulationWithAngleRequest):
         materials.append(L.material)
     materials.append(req.layers[-1].material)
     
+    # Analytical penetration depth L calculation
+    try:
+        n_prisma = get_refractive_index(layers[0], req.wavelength_nm)
+        n_analito = get_refractive_index(layers[-1], req.wavelength_nm)
+        
+        theta_rad = np.radians(req.theta_deg)
+        eps_analito = n_analito ** 2
+        
+        term = eps_analito - (n_prisma * np.sin(theta_rad)) ** 2
+        sqrt_term = np.lib.scimath.sqrt(term)
+        im_part = np.abs(np.imag(sqrt_term))
+        
+        if im_part > 1e-9:
+            penetration_depth = float(req.wavelength_nm / (2 * np.pi * im_part))
+        else:
+            penetration_depth = None
+    except Exception as e:
+        print(f"Error calculating penetration depth: {e}")
+        penetration_depth = None
+        
     return FieldProfileResponse(
         z=z.tolist(),
         E_sq=E_sq.tolist(),
         layer_bounds=bounds,
-        materials=materials
+        materials=materials,
+        penetration_depth=penetration_depth
     )
 
 @app.post("/api/optimize", response_model=OptimizationResponse)
