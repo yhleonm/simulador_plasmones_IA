@@ -49,6 +49,8 @@ export interface FieldProfileResponse {
     layer_bounds: number[];
     materials: string[];
     penetration_depth?: number;
+    propagation_length?: number;
+    enhancement_factor?: number;
 }
 
 export interface Simulation2DRequest {

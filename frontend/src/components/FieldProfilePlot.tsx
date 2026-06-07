@@ -42,6 +42,15 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
     metadata += `# Longitud de Onda: ${wavelength} nm\n`;
     metadata += `# Polarizacion: ${polarization}\n`;
     metadata += `# Angulo de Incidencia: ${theta}°\n`;
+    if (data.penetration_depth !== undefined && data.penetration_depth !== null) {
+      metadata += `# Profundidad de penetracion analitica (L): ${data.penetration_depth.toFixed(4)} nm\n`;
+    }
+    if (data.enhancement_factor !== undefined && data.enhancement_factor !== null) {
+      metadata += `# Factor de realce de campo max (EF): ${data.enhancement_factor.toFixed(4)}x\n`;
+    }
+    if (data.propagation_length !== undefined && data.propagation_length !== null) {
+      metadata += `# Longitud de propagacion del plasmon (Le): ${data.propagation_length.toFixed(4)} nm\n`;
+    }
     metadata += `# Capas del Sensor:\n`;
     layers.forEach((l, idx) => {
       const thickness = (idx === 0 || idx === layers.length - 1) ? "Semi-infinito" : `${l.d} nm`;
@@ -214,12 +223,12 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
             </Paper>
 
             <Box sx={{ mt: 3, mb: 2 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1.5, color: 'text.primary' }}>
-                Análisis de Penetración Evanescente
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 2, color: 'text.primary', letterSpacing: 0.5 }}>
+                Métricas Físicas Avanzadas del Sensor
               </Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
                 {data.penetration_depth !== undefined && data.penetration_depth !== null && (
-                  <Paper variant="outlined" sx={{ p: 2, flex: 1, borderLeft: '5px solid #9c27b0', bgcolor: '#fbf7fc' }}>
+                  <Paper variant="outlined" sx={{ p: 2, borderLeft: '5px solid #9c27b0', bgcolor: '#fbf7fc' }}>
                     <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
                       PROFUNDIDAD DE PENETRACIÓN ANALÍTICA (L)
                     </Typography>
@@ -232,7 +241,7 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
                   </Paper>
                 )}
                 {lp !== null && (
-                  <Paper variant="outlined" sx={{ p: 2, flex: 1, borderLeft: '5px solid #1976d2', bgcolor: '#f5f9ff' }}>
+                  <Paper variant="outlined" sx={{ p: 2, borderLeft: '5px solid #1976d2', bgcolor: '#f5f9ff' }}>
                     <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
                       PROFUNDIDAD DE DECAIMIENTO DE INTENSIDAD (Lp)
                     </Typography>
@@ -244,7 +253,33 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
                     </Typography>
                   </Paper>
                 )}
-              </Stack>
+                {data.enhancement_factor !== undefined && data.enhancement_factor !== null && (
+                  <Paper variant="outlined" sx={{ p: 2, borderLeft: '5px solid #2e7d32', bgcolor: '#f1f8e9' }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
+                      FACTOR DE REALCE DEL CAMPO (EF)
+                    </Typography>
+                    <Typography variant="h5" sx={{ color: 'success.main', fontWeight: 'bold', my: 1 }}>
+                      {data.enhancement_factor.toFixed(1)}x
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Amplificación máxima de la <strong>intensidad local (|E|²/|E₀|²)</strong>. Un factor elevado indica un fuerte acoplamiento plasmónico y alta sensibilidad de transducción.
+                    </Typography>
+                  </Paper>
+                )}
+                {data.propagation_length !== undefined && data.propagation_length !== null && (
+                  <Paper variant="outlined" sx={{ p: 2, borderLeft: '5px solid #ed6c02', bgcolor: '#fffde7' }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block' }}>
+                      LONGITUD DE PROPAGACIÓN DEL PLASMÓN (Le)
+                    </Typography>
+                    <Typography variant="h5" sx={{ color: 'warning.main', fontWeight: 'bold', my: 1 }}>
+                      {(data.propagation_length / 1000).toFixed(2)} µm <Typography component="span" variant="body2" color="textSecondary">({data.propagation_length.toFixed(0)} nm)</Typography>
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Distancia en el plano de la interfaz sobre la cual el plasmón viaja antes de disiparse. Determina la <strong>resolución espacial y el grado de deslocalización</strong> lateral del sensor.
+                    </Typography>
+                  </Paper>
+                )}
+              </Box>
             </Box>
 
             <Box sx={{ mt: 2, p: 2, bgcolor: '#e3f2fd', borderRadius: 1 }}>

@@ -244,7 +244,11 @@ def simulate_field(req: SimulationWithAngleRequest):
         materials.append(L.material)
     materials.append(req.layers[-1].material)
     
-    # Analytical penetration depth L calculation
+    # Analytical penetration depth L, propagation length Le and field enhancement calculation
+    penetration_depth = None
+    propagation_length = None
+    enhancement_factor = None
+    
     try:
         n_prisma = get_refractive_index(layers[0], req.wavelength_nm)
         n_analito = get_refractive_index(layers[-1], req.wavelength_nm)
@@ -252,24 +256,49 @@ def simulate_field(req: SimulationWithAngleRequest):
         theta_rad = np.radians(req.theta_deg)
         eps_analito = n_analito ** 2
         
+        # 1. Penetration depth
         term = eps_analito - (n_prisma * np.sin(theta_rad)) ** 2
         sqrt_term = np.lib.scimath.sqrt(term)
         im_part = np.abs(np.imag(sqrt_term))
         
         if im_part > 1e-9:
             penetration_depth = float(req.wavelength_nm / (2 * np.pi * im_part))
-        else:
-            penetration_depth = None
+            
+        # 2. Field Enhancement Factor (max of |E|^2)
+        enhancement_factor = float(np.max(E_sq))
+        
+        # 3. Propagation length along the interface (Le)
+        metal_layer = None
+        for L in layers[1:-1]:
+            n_c = get_refractive_index(L, req.wavelength_nm)
+            eps_c = n_c ** 2
+            if eps_c.real < 0:
+                metal_layer = L
+                break
+                
+        if metal_layer is not None:
+            n_m = get_refractive_index(metal_layer, req.wavelength_nm)
+            eps_m = n_m ** 2
+            eps_d = eps_analito
+            
+            spp_term = (eps_m * eps_d) / (eps_m + eps_d)
+            spp_sqrt = np.lib.scimath.sqrt(spp_term)
+            im_kx = np.imag(spp_sqrt)
+            
+            if np.abs(im_kx) > 1e-9:
+                propagation_length = float(req.wavelength_nm / (4 * np.pi * np.abs(im_kx)))
+                
     except Exception as e:
-        print(f"Error calculating penetration depth: {e}")
-        penetration_depth = None
+        print(f"Error calculating field profile parameters: {e}")
         
     return FieldProfileResponse(
         z=z.tolist(),
         E_sq=E_sq.tolist(),
         layer_bounds=bounds,
         materials=materials,
-        penetration_depth=penetration_depth
+        penetration_depth=penetration_depth,
+        propagation_length=propagation_length,
+        enhancement_factor=enhancement_factor
     )
 
 @app.post("/api/optimize", response_model=OptimizationResponse)

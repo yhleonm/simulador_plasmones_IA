@@ -47,6 +47,8 @@ class FieldProfileResponse(BaseModel):
     layer_bounds: List[float]
     materials: List[str]
     penetration_depth: Optional[float] = None
+    propagation_length: Optional[float] = None
+    enhancement_factor: Optional[float] = None
 
 class OptimizationRequest(SimulationRequest):
     optimize_indices: List[int] = Field(..., description="Indices of layers to optimize")
