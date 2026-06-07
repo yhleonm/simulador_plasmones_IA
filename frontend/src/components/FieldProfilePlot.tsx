@@ -245,7 +245,7 @@ const FieldProfilePlot: React.FC<Props> = ({ layers, wavelength, polarization })
 
         return (
           <Box>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Stack direction="row" sx={{ mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="textSecondary" sx={{ fontWeight: 'bold' }}>
                 Distribución del Campo Eléctrico Normalizado @ {theta}°
               </Typography>
