@@ -36,6 +36,9 @@ class ReflectanceResponse(BaseModel):
     fwhm: Optional[float] = 0.0
     fom: Optional[float] = 0.0
     sensor_mode: Optional[str] = None
+    phase_tm: Optional[List[float]] = None
+    phase_te: Optional[List[float]] = None
+    phase_diff: Optional[List[float]] = None
 
 
 class FieldProfileResponse(BaseModel):

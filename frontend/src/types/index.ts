@@ -37,6 +37,9 @@ export interface ReflectanceResponse {
     fwhm?: number;
     fom?: number;
     sensor_mode?: string;
+    phase_tm?: number[];
+    phase_te?: number[];
+    phase_diff?: number[];
 }
 
 

@@ -312,7 +312,7 @@ def get_refractive_index(layer_info, wavelength_nm):
 
     return 1.5 + 0j
 
-def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM'):
+def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient=False):
     """Calcula Reflectancia y Transmitancia usando TMM."""
     k0 = 2 * np.pi / wavelength_nm
     theta_rad = np.radians(theta_deg)
@@ -359,6 +359,8 @@ def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM'):
     R = np.abs(r)**2
     T = (np.real(qN) / np.real(q0)) * np.abs(2*q0 / den)**2
     
+    if return_coefficient:
+        return R, T, r
     return R, T
 
 def calculate_fwhm(angles, reflectance, res_angle):

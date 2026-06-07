@@ -127,12 +127,30 @@ def simulate_reflectance(req: SimulationRequest):
     if req.interrogation_mode == "spectral":
         wls = np.linspace(400, 1000, 600)
         R_vals = []
+        phase_tm = []
+        phase_te = []
+        phase_diff = []
         fixed_angle = req.fixed_angle_deg if req.fixed_angle_deg is not None else 45.0
         
         try:
             for wl in wls:
-                R, _ = calculate_tmm(wl, fixed_angle, layers, req.polarization)
+                R_tm, _, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True)
+                R_te, _, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True)
+                
+                # Reflectance for the selected polarization
+                R = R_tm if req.polarization == 'TM' else R_te
                 R_vals.append(float(R))
+                
+                # Phase calculation (argument in radians)
+                phi_tm = np.angle(r_tm)
+                phi_te = np.angle(r_te)
+                diff = phi_tm - phi_te
+                # Wrap to [-pi, pi]
+                diff = np.arctan2(np.sin(diff), np.cos(diff))
+                
+                phase_tm.append(float(phi_tm))
+                phase_te.append(float(phi_te))
+                phase_diff.append(float(diff))
         except Exception as e:
             print(f"ERROR in spectral TMM calculation: {e}")
             raise e
@@ -151,16 +169,37 @@ def simulate_reflectance(req: SimulationRequest):
             min_reflectance=min_R,
             fwhm=float(fwhm),
             fom=0.0,
-            sensor_mode=sensor_mode
+            sensor_mode=sensor_mode,
+            phase_tm=phase_tm,
+            phase_te=phase_te,
+            phase_diff=phase_diff
         )
     else:
         angles = np.linspace(30, 85, 800)
         R_vals = []
+        phase_tm = []
+        phase_te = []
+        phase_diff = []
         
         try:
             for theta in angles:
-                R, _ = calculate_tmm(req.wavelength_nm, theta, layers, req.polarization)
+                R_tm, _, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True)
+                R_te, _, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True)
+                
+                # Reflectance for the selected polarization
+                R = R_tm if req.polarization == 'TM' else R_te
                 R_vals.append(float(R))
+                
+                # Phase calculation (argument in radians)
+                phi_tm = np.angle(r_tm)
+                phi_te = np.angle(r_te)
+                diff = phi_tm - phi_te
+                # Wrap to [-pi, pi]
+                diff = np.arctan2(np.sin(diff), np.cos(diff))
+                
+                phase_tm.append(float(phi_tm))
+                phase_te.append(float(phi_te))
+                phase_diff.append(float(diff))
         except Exception as e:
             print(f"ERROR in angular TMM calculation: {e}")
             raise e
@@ -180,7 +219,10 @@ def simulate_reflectance(req: SimulationRequest):
             min_reflectance=min_R,
             fwhm=float(fwhm),
             fom=0.0,
-            sensor_mode=sensor_mode
+            sensor_mode=sensor_mode,
+            phase_tm=phase_tm,
+            phase_te=phase_te,
+            phase_diff=phase_diff
         )
 
 

@@ -155,7 +155,7 @@ const LayerSchematic: React.FC<Props> = ({ layers }) => {
               />
               <text
                 x={15}
-                y={l.y + l.h / 2 + 5}
+                y={l.index === 0 ? l.y + 20 : l.y + l.h / 2 + 5}
                 fill="#37474f"
                 fontSize={12}
                 fontWeight="bold"
@@ -194,8 +194,8 @@ const LayerSchematic: React.FC<Props> = ({ layers }) => {
           />
 
           {/* Text Labels for Laser */}
-          <text x={beamStartX} y={beamStartY - 10} fill="#d50000" fontSize={11} fontWeight="bold">Luz Incidente</text>
-          <text x={beamEndX - 70} y={beamEndY - 10} fill="#aa00ff" fontSize={11} fontWeight="bold">Reflectancia (R)</text>
+          <text x={beamStartX} y={beamStartY + 15} fill="#d50000" fontSize={11} fontWeight="bold">Luz Incidente</text>
+          <text x={beamEndX - 90} y={beamEndY + 15} fill="#aa00ff" fontSize={11} fontWeight="bold">Reflectancia (R)</text>
 
           {/* SPR Resonance Indicator (Glow center point) */}
           <circle
