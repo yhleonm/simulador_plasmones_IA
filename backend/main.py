@@ -4,9 +4,15 @@ import numpy as np
 from typing import List
 import os
 
-from backend.models.schemas import SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, OptimizationResponse, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse, XAIRequest, XAIResponse
+from backend.models.schemas import (
+    SimulationRequest, SimulationWithAngleRequest, ReflectanceResponse, 
+    FieldProfileResponse, OptimizationRequest, OptimizationResponse, 
+    Simulation2DRequest, Simulation2DResponse, KineticsRequest, 
+    KineticsResponse, XAIRequest, XAIResponse, CurveFitRequest, 
+    CurveFitResponse, FitParameterConfig
+)
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, minimize
 
 app = FastAPI(title="SPR Simulator API")
 
@@ -693,6 +699,144 @@ def analyze_xai(req: XAIRequest):
         })
         
     return {"variables": variables_data}
+
+
+@app.post("/api/fit", response_model=CurveFitResponse)
+def fit_curve(req: CurveFitRequest):
+    x_exp = np.array(req.x_exp)
+    y_exp = np.array(req.y_exp)
+    
+    if len(x_exp) != len(y_exp) or len(x_exp) == 0:
+        raise HTTPException(
+            status_code=400, 
+            detail="Los datos experimentales X e Y deben tener el mismo tamaño y no estar vacíos."
+        )
+    
+    x0 = [p.guess for p in req.parameters]
+    bounds = [(p.min_val, p.max_val) for p in req.parameters]
+    
+    def loss_func(params_to_test):
+        y_sim = []
+        for i, x in enumerate(req.x_exp):
+            if req.interrogation_mode == "angular":
+                wl = req.wavelength_nm
+                theta = x
+            else:
+                wl = x
+                theta = req.fixed_angle_deg
+                
+            local_layers = [L.model_dump() for L in req.layers]
+            
+            for idx, p in enumerate(req.parameters):
+                val = float(params_to_test[idx])
+                layer_idx = p.layer_index
+                param_type = p.parameter
+                
+                if param_type == "d":
+                    local_layers[layer_idx]["d"] = val
+                else:
+                    orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                    local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                    if param_type == "n":
+                        local_layers[layer_idx]["custom_n"] = val
+                        local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                    elif param_type == "k":
+                        local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                        local_layers[layer_idx]["custom_k"] = val
+            
+            try:
+                R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+                y_sim.append(float(R))
+            except Exception:
+                y_sim.append(1.0)
+                
+        return float(np.mean((np.array(y_sim) - y_exp) ** 2))
+
+    # Pre-calculate initial curve
+    y_initial = []
+    for x in req.x_exp:
+        if req.interrogation_mode == "angular":
+            wl = req.wavelength_nm
+            theta = x
+        else:
+            wl = x
+            theta = req.fixed_angle_deg
+            
+        local_layers = [L.model_dump() for L in req.layers]
+        for p in req.parameters:
+            layer_idx = p.layer_index
+            val = p.guess
+            if p.parameter == "d":
+                local_layers[layer_idx]["d"] = val
+            else:
+                orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                if p.parameter == "n":
+                    local_layers[layer_idx]["custom_n"] = val
+                    local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                elif p.parameter == "k":
+                    local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                    local_layers[layer_idx]["custom_k"] = val
+        try:
+            R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+            y_initial.append(float(R))
+        except Exception:
+            y_initial.append(1.0)
+
+    try:
+        res = minimize(loss_func, x0, bounds=bounds, method='L-BFGS-B')
+        optimized_vals = res.x
+        rmse = float(np.sqrt(res.fun))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error en la optimización del ajuste de curvas: {str(e)}"
+        )
+    
+    # Calculate optimized final curve
+    y_sim = []
+    for x in req.x_exp:
+        if req.interrogation_mode == "angular":
+            wl = req.wavelength_nm
+            theta = x
+        else:
+            wl = x
+            theta = req.fixed_angle_deg
+            
+        local_layers = [L.model_dump() for L in req.layers]
+        for idx, p in enumerate(req.parameters):
+            layer_idx = p.layer_index
+            val = float(optimized_vals[idx])
+            if p.parameter == "d":
+                local_layers[layer_idx]["d"] = val
+            else:
+                orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                if p.parameter == "n":
+                    local_layers[layer_idx]["custom_n"] = val
+                    local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                elif p.parameter == "k":
+                    local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                    local_layers[layer_idx]["custom_k"] = val
+        try:
+            R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+            y_sim.append(float(R))
+        except Exception:
+            y_sim.append(1.0)
+            
+    optimized_params = []
+    for idx, p in enumerate(req.parameters):
+        opt_p = p.model_copy()
+        opt_p.optimized_value = float(optimized_vals[idx])
+        optimized_params.append(opt_p)
+        
+    return CurveFitResponse(
+        optimized_parameters=optimized_params,
+        rmse=rmse,
+        y_sim=y_sim,
+        y_initial=y_initial
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -129,4 +129,30 @@ class XAIResponse(BaseModel):
     variables: List[XAIVariableData]
 
 
+class FitParameterConfig(BaseModel):
+    layer_index: int
+    parameter: str = Field(..., pattern="^(d|n|k)$", description="Parameter to fit: d (thickness), n (refractive index real part), or k (refractive index imaginary part)")
+    guess: float
+    min_val: float
+    max_val: float
+    optimized_value: Optional[float] = None
+
+class CurveFitRequest(BaseModel):
+    layers: List[LayerConfig]
+    wavelength_nm: float = Field(633.0, gt=0)
+    polarization: str = Field("TM", pattern="^(TM|TE)$")
+    interrogation_mode: str = Field("angular", pattern="^(angular|spectral)$")
+    fixed_angle_deg: Optional[float] = 45.0
+    x_exp: List[float] = Field(..., description="Experimental X data (angles or wavelengths)")
+    y_exp: List[float] = Field(..., description="Experimental Y data (reflectance)")
+    parameters: List[FitParameterConfig] = Field(..., description="Parameters to fit")
+
+class CurveFitResponse(BaseModel):
+    optimized_parameters: List[FitParameterConfig]
+    rmse: float
+    y_sim: List[float]
+    y_initial: List[float]
+
+
+
 

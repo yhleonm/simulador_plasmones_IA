@@ -1,5 +1,10 @@
 import axios from 'axios';
-import type { SimulationRequest, ReflectanceResponse, FieldProfileResponse, OptimizationRequest, Simulation2DRequest, Simulation2DResponse, KineticsRequest, KineticsResponse, XAIRequest, XAIResponse } from '../types';
+import type { 
+    SimulationRequest, ReflectanceResponse, FieldProfileResponse, 
+    OptimizationRequest, Simulation2DRequest, Simulation2DResponse, 
+    KineticsRequest, KineticsResponse, XAIRequest, XAIResponse,
+    CurveFitRequest, CurveFitResponse
+} from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 if (rawBaseUrl && !rawBaseUrl.endsWith('/api') && !rawBaseUrl.endsWith('/api/')) {
@@ -63,6 +68,12 @@ export const simulateXAI = async (req: XAIRequest): Promise<XAIResponse> => {
     const response = await api.post('/analyze/xai', req);
     return response.data;
 };
+
+export const fitCurve = async (req: CurveFitRequest): Promise<CurveFitResponse> => {
+    const response = await api.post('/fit', req);
+    return response.data;
+};
+
 
 
 

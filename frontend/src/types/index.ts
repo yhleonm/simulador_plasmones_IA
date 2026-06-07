@@ -117,6 +117,33 @@ export interface XAIResponse {
     variables: XAIVariableData[];
 }
 
+export interface FitParameterConfig {
+    layer_index: number;
+    parameter: 'd' | 'n' | 'k';
+    guess: number;
+    min_val: number;
+    max_val: number;
+    optimized_value?: number;
+}
+
+export interface CurveFitRequest {
+    layers: LayerConfig[];
+    wavelength_nm: number;
+    polarization: 'TM' | 'TE';
+    interrogation_mode: 'angular' | 'spectral';
+    fixed_angle_deg?: number;
+    x_exp: number[];
+    y_exp: number[];
+    parameters: FitParameterConfig[];
+}
+
+export interface CurveFitResponse {
+    optimized_parameters: FitParameterConfig[];
+    rmse: number;
+    y_sim: number[];
+    y_initial: number[];
+}
+
 export interface XAIRequest {
     layers: LayerConfig[];
     wavelength_nm: number;
@@ -127,5 +154,7 @@ export interface XAIRequest {
     bounds_min: number[];
     bounds_max: number[];
 }
+
+
 
 

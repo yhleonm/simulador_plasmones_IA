@@ -10,6 +10,7 @@ import LayerSchematic from './components/LayerSchematic';
 import KineticsSensorgram from './components/KineticsSensorgram';
 import Reflectance2DMap from './components/Reflectance2DMap';
 import XAIPanel from './components/XAIPanel';
+import CurveFittingPanel from './components/CurveFittingPanel';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -311,6 +312,7 @@ export default function App() {
             <Tab label="Sensograma (Cinética)" />
             <Tab label="Mapa de Dispersión 2D" />
             <Tab label="Análisis IA (XAI)" />
+            <Tab label="Ajuste de Curvas / Solver Inverso" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -347,6 +349,16 @@ export default function App() {
             {tabValue === 4 && (
               <XAIPanel 
                 layers={layers}
+                wavelength={wavelength}
+                polarization={polarization}
+                interrogationMode={interrogationMode}
+                fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 5 && (
+              <CurveFittingPanel 
+                layers={layers}
+                setLayers={setLayers}
                 wavelength={wavelength}
                 polarization={polarization}
                 interrogationMode={interrogationMode}
