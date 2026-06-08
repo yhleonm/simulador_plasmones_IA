@@ -172,6 +172,27 @@ export interface ThermalSweepResponse {
     curves: ThermalSweepCurve[];
 }
 
+export interface CalibrationRequest extends SimulationRequest {
+    n_start: number;
+    n_end: number;
+    steps: number;
+}
+
+export interface CalibrationPoint {
+    n: number;
+    resonance_value: number;
+    shift: number;
+}
+
+export interface CalibrationResponse {
+    points: CalibrationPoint[];
+    slope: number;
+    intercept: number;
+    r_squared: number;
+    fit_line: number[];
+    interrogation_mode: 'angular' | 'spectral';
+}
+
 
 
 

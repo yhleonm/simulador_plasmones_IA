@@ -10,7 +10,7 @@ from backend.models.schemas import (
     Simulation2DRequest, Simulation2DResponse, KineticsRequest, 
     KineticsResponse, XAIRequest, XAIResponse, CurveFitRequest, 
     CurveFitResponse, FitParameterConfig, ThermalSweepResponse, 
-    ThermalSweepCurve
+    ThermalSweepCurve, CalibrationRequest, CalibrationResponse
 )
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution, minimize
@@ -906,6 +906,78 @@ def simulate_thermal_sweep(req: SimulationRequest):
             angles=angles.tolist(),
             curves=curves
         )
+
+
+@app.post("/api/simulate/calibration", response_model=CalibrationResponse)
+def simulate_calibration(req: CalibrationRequest):
+    layers = [layer.model_dump() for layer in req.layers]
+    
+    n_vals = np.linspace(req.n_start, req.n_end, req.steps)
+    resonance_values = []
+    
+    if req.interrogation_mode == "spectral":
+        x_grid = np.linspace(400, 1000, 600)
+    else:
+        x_grid = np.linspace(30, 85, 600)
+        
+    for n_analyte in n_vals:
+        layers[-1]["custom_n"] = float(n_analyte)
+        layers[-1]["material"] = "Personalizado (Manual)"
+        layers[-1]["custom_k"] = 0.0
+        
+        R_vals = []
+        for x in x_grid:
+            if req.interrogation_mode == "spectral":
+                R, _ = calculate_tmm(x, req.fixed_angle_deg or 45.0, layers, req.polarization, temperature_c=req.temperature_c)
+            else:
+                R, _ = calculate_tmm(req.wavelength_nm, x, layers, req.polarization, temperature_c=req.temperature_c)
+            R_vals.append(float(R))
+            
+        min_idx = np.argmin(R_vals)
+        if min_idx == 0 or min_idx == len(R_vals) - 1:
+            res_val = float(x_grid[min_idx])
+        else:
+            x1, x2, x3 = x_grid[min_idx-1], x_grid[min_idx], x_grid[min_idx+1]
+            y1, y2, y3 = R_vals[min_idx-1], R_vals[min_idx], R_vals[min_idx+1]
+            denom = y3 - 2 * y2 + y1
+            if abs(denom) < 1e-9:
+                res_val = float(x2)
+            else:
+                h = x2 - x1
+                res_val = float(x2 - (h / 2.0) * (y3 - y1) / denom)
+                
+        resonance_values.append(res_val)
+        
+    base_resonance = resonance_values[0]
+    shifts = [val - base_resonance for val in resonance_values]
+    
+    X = np.array(n_vals)
+    Y = np.array(resonance_values)
+    slope, intercept = np.polyfit(X, Y, 1)
+    
+    y_pred = slope * X + intercept
+    ss_res = np.sum((Y - y_pred) ** 2)
+    ss_tot = np.sum((Y - np.mean(Y)) ** 2)
+    r_squared = float(1.0 - (ss_res / ss_tot) if ss_tot > 0 else 1.0)
+    
+    fit_line = y_pred.tolist()
+    
+    points = []
+    for i in range(len(n_vals)):
+        points.append({
+            "n": float(n_vals[i]),
+            "resonance_value": float(resonance_values[i]),
+            "shift": float(shifts[i])
+        })
+        
+    return CalibrationResponse(
+        points=points,
+        slope=float(slope),
+        intercept=float(intercept),
+        r_squared=r_squared,
+        fit_line=fit_line,
+        interrogation_mode=req.interrogation_mode
+    )
 
 
 if __name__ == "__main__":

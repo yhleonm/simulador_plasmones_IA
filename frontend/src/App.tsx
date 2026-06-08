@@ -12,6 +12,7 @@ import Reflectance2DMap from './components/Reflectance2DMap';
 import XAIPanel from './components/XAIPanel';
 import CurveFittingPanel from './components/CurveFittingPanel';
 import ThermalAnalysisPanel from './components/ThermalAnalysisPanel';
+import CalibrationCurvePanel from './components/CalibrationCurvePanel';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -316,6 +317,7 @@ export default function App() {
             <Tab label="Análisis IA (XAI)" />
             <Tab label="Ajuste de Curvas / Solver Inverso" />
             <Tab label="Análisis Termo-Óptico" />
+            <Tab label="Curva de Calibración" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -370,6 +372,15 @@ export default function App() {
             )}
             {tabValue === 6 && (
               <ThermalAnalysisPanel 
+                layers={layers}
+                wavelength={wavelength}
+                polarization={polarization}
+                interrogationMode={interrogationMode}
+                fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 7 && (
+              <CalibrationCurvePanel 
                 layers={layers}
                 wavelength={wavelength}
                 polarization={polarization}

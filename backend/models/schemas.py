@@ -171,6 +171,26 @@ class ThermalSweepResponse(BaseModel):
     curves: List[ThermalSweepCurve]
 
 
+class CalibrationRequest(SimulationRequest):
+    n_start: float = Field(1.330, gt=0, description="Starting refractive index of analyte")
+    n_end: float = Field(1.350, gt=0, description="Ending refractive index of analyte")
+    steps: int = Field(5, ge=3, le=20, description="Number of calibration steps")
+
+class CalibrationPoint(BaseModel):
+    n: float
+    resonance_value: float
+    shift: float
+
+class CalibrationResponse(BaseModel):
+    points: List[CalibrationPoint]
+    slope: float
+    intercept: float
+    r_squared: float
+    fit_line: List[float]
+    interrogation_mode: str
+
+
+
 
 
 

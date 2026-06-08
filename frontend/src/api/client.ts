@@ -3,7 +3,8 @@ import type {
     SimulationRequest, ReflectanceResponse, FieldProfileResponse, 
     OptimizationRequest, Simulation2DRequest, Simulation2DResponse, 
     KineticsRequest, KineticsResponse, XAIRequest, XAIResponse,
-    CurveFitRequest, CurveFitResponse, ThermalSweepResponse
+    CurveFitRequest, CurveFitResponse, ThermalSweepResponse,
+    CalibrationRequest, CalibrationResponse
 } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -76,6 +77,11 @@ export const fitCurve = async (req: CurveFitRequest): Promise<CurveFitResponse> 
 
 export const simulateThermalSweep = async (req: SimulationRequest): Promise<ThermalSweepResponse> => {
     const response = await api.post('/simulate/thermal-sweep', req);
+    return response.data;
+};
+
+export const simulateCalibration = async (req: CalibrationRequest): Promise<CalibrationResponse> => {
+    const response = await api.post('/simulate/calibration', req);
     return response.data;
 };
 
