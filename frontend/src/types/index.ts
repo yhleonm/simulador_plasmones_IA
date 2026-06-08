@@ -33,6 +33,7 @@ export interface ReflectanceResponse {
     angles?: number[];
     wavelengths?: number[];
     reflectance: number[];
+    transmittance?: number[];
     resonance_angle?: number;
     resonance_wavelength?: number;
     min_reflectance?: number;
@@ -160,6 +161,7 @@ export interface XAIRequest {
 export interface ThermalSweepCurve {
     temperature_c: number;
     reflectance: number[];
+    transmittance?: number[];
     resonance_angle?: number;
     resonance_wavelength?: number;
 }

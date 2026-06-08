@@ -25,7 +25,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
   const [loading, setLoading] = useState(false);
   const [biosensing, setBiosensing] = useState(false);
   const [deltaN, setDeltaN] = useState(0.005);
-  const [plotMode, setPlotMode] = useState<'amplitude' | 'phase'>('amplitude');
+  const [plotMode, setPlotMode] = useState<'reflectance' | 'transmittance' | 'phase'>('reflectance');
   
   // LoD state
   const isSpectral = interrogationMode === 'spectral';
@@ -126,6 +126,8 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
     xVal: xVal,
     reflectanceBase: data.reflectance[i],
     reflectancePerturbed: perturbedData ? perturbedData.reflectance[i] : null,
+    transmittanceBase: data.transmittance ? data.transmittance[i] : null,
+    transmittancePerturbed: perturbedData?.transmittance ? perturbedData.transmittance[i] : null,
     phaseDiffBase: data.phase_diff ? data.phase_diff[i] : null,
     phaseDiffPerturbed: perturbedData?.phase_diff ? perturbedData.phase_diff[i] : null
   })) : [];
@@ -142,7 +144,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
   const exportToCSV = () => {
     if (!data) return;
     
-    let metadata = "# SIMULADOR SPR-LMR - METADATOS DE REFLECTANCIA\n";
+    let metadata = "# SIMULADOR SPR-LMR - METADATOS DE SIMULACION (R, T, Fase)\n";
     metadata += `# Modo de Interrogacion: ${interrogationMode === 'spectral' ? 'Espectral' : 'Angular'}\n`;
     metadata += `# Polarizacion: ${polarization}\n`;
     metadata += `# Parametro Fijo: ${isSpectral ? `Angulo Fijo = ${fixedAngle}°` : `Longitud de Onda = ${wavelength} nm`}\n`;
@@ -160,17 +162,17 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
     metadata += "# ----------------------------------------------------\n";
     
     const xHeader = isSpectral ? "Longitud de onda [nm]" : "Angulo [deg]";
-    let csvContent = metadata + `${xHeader},Reflectancia Base,Fase Diff Base (rad)`;
+    let csvContent = metadata + `${xHeader},Reflectancia Base,Transmitancia Base,Fase Diff Base (rad)`;
     if (perturbedData) {
-      csvContent += `,Reflectancia Perturbada (dn=${deltaN}),Fase Diff Perturbada (rad)\n`;
+      csvContent += `,Reflectancia Perturbada (dn=${deltaN}),Transmitancia Perturbada (dn=${deltaN}),Fase Diff Perturbada (rad)\n`;
     } else {
       csvContent += `\n`;
     }
     
     chartData.forEach(row => {
-      let line = `${row.xVal.toFixed(4)},${row.reflectanceBase.toFixed(6)},${row.phaseDiffBase?.toFixed(6) ?? ''}`;
+      let line = `${row.xVal.toFixed(4)},${row.reflectanceBase.toFixed(6)},${row.transmittanceBase?.toFixed(6) ?? ''},${row.phaseDiffBase?.toFixed(6) ?? ''}`;
       if (row.reflectancePerturbed !== null && row.reflectancePerturbed !== undefined) {
-        line += `,${row.reflectancePerturbed.toFixed(6)},${row.phaseDiffPerturbed?.toFixed(6) ?? ''}`;
+        line += `,${row.reflectancePerturbed.toFixed(6)},${row.transmittancePerturbed?.toFixed(6) ?? ''},${row.phaseDiffPerturbed?.toFixed(6) ?? ''}`;
       }
       csvContent += line + `\n`;
     });
@@ -179,7 +181,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `reflectancia_spr_${interrogationMode}.csv`);
+    link.setAttribute("download", `simulacion_spr_${interrogationMode}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -337,136 +339,171 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
 
           <Divider sx={{ mb: 3 }} />
 
-          <Stack direction="row" sx={{ mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-              {plotMode === 'amplitude' ? 'Gráfico de Reflectancia (Amplitud)' : 'Gráfico de Diferencia de Fase (Δφ = φ_TM - φ_TE)'}
-            </Typography>
-            <ToggleButtonGroup
-              value={plotMode}
-              exclusive
-              onChange={(_, newMode) => { if (newMode !== null) setPlotMode(newMode); }}
-              size="small"
-              color="primary"
-            >
-              <ToggleButton value="amplitude" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Amplitud (R)</ToggleButton>
-              <ToggleButton value="phase" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Fase / Diferencia de Fase (Δφ)</ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
-          
-          <Paper variant="outlined" sx={{ height: 420, p: 2, bgcolor: '#fff' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="xVal" 
-                  type="number" 
-                  domain={isSpectral ? [400, 1000] : [30, 85]}
-                  tick={{ fontSize: 12 }}
-                >
-                  <Label value={isSpectral ? "Longitud de Onda (nm)" : "Ángulo de Incidencia (deg)"} offset={-10} position="insideBottom" />
-                </XAxis>
-                <YAxis 
-                  domain={plotMode === 'amplitude' ? [0, 1.05] : [-3.5, 3.5]} 
-                  tick={{ fontSize: 12 }}
-                  ticks={plotMode === 'amplitude' ? undefined : [-3.1416, -1.5708, 0, 1.5708, 3.1416]}
-                  tickFormatter={(val) => {
-                    if (plotMode === 'amplitude') return val.toFixed(1);
-                    if (Math.abs(val - 3.1416) < 0.1) return 'π';
-                    if (Math.abs(val - 1.5708) < 0.1) return 'π/2';
-                    if (Math.abs(val) < 0.1) return '0';
-                    if (Math.abs(val + 1.5708) < 0.1) return '-π/2';
-                    if (Math.abs(val + 3.1416) < 0.1) return '-π';
-                    return val.toFixed(2);
-                  }}
-                >
-                  <Label 
-                    value={plotMode === 'amplitude' ? "Reflectancia (R)" : "Diferencia de Fase Δφ (rad)"} 
-                    angle={-90} 
-                    position="insideLeft" 
-                    style={{ textAnchor: 'middle' }} 
-                  />
-                </YAxis>
-                <Tooltip 
-                  formatter={(value: any) => {
-                    const numVal = Number(value);
-                    if (plotMode === 'amplitude') {
-                      return [numVal.toFixed(4), 'Reflectancia'];
-                    } else {
-                      const degVal = (numVal * 180 / Math.PI).toFixed(1);
-                      return [`${numVal.toFixed(4)} rad (${degVal}°)`, 'Diferencia de Fase Δφ'];
-                    }
-                  }}
-                  labelFormatter={(label: any) => isSpectral ? `Wavelength: ${Number(label).toFixed(1)} nm` : `Ángulo: ${Number(label).toFixed(2)}°`}
+        <Stack direction="row" sx={{ mb: 2, justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+            {plotMode === 'reflectance' ? 'Gráfico de Reflectancia (Amplitud R)' : 
+             plotMode === 'transmittance' ? 'Gráfico de Transmitancia (Amplitud T)' : 
+             'Gráfico de Diferencia de Fase (Δφ = φ_TM - φ_TE)'}
+          </Typography>
+          <ToggleButtonGroup
+            value={plotMode}
+            exclusive
+            onChange={(_, newMode) => { if (newMode !== null) setPlotMode(newMode); }}
+            size="small"
+            color="primary"
+          >
+            <ToggleButton value="reflectance" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Reflectancia (R)</ToggleButton>
+            <ToggleButton value="transmittance" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Transmitancia (T)</ToggleButton>
+            <ToggleButton value="phase" sx={{ textTransform: 'none', fontWeight: 'bold' }}>Fase (Δφ)</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+        
+        <Paper variant="outlined" sx={{ height: 420, p: 2, bgcolor: '#fff' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis 
+                dataKey="xVal" 
+                type="number" 
+                domain={isSpectral ? [400, 1000] : [30, 85]}
+                tick={{ fontSize: 12 }}
+              >
+                <Label value={isSpectral ? "Longitud de Onda (nm)" : "Ángulo de Incidencia (deg)"} offset={-10} position="insideBottom" />
+              </XAxis>
+              <YAxis 
+                domain={(plotMode === 'reflectance' || plotMode === 'transmittance') ? [0, 1.05] : [-3.5, 3.5]} 
+                tick={{ fontSize: 12 }}
+                ticks={(plotMode === 'reflectance' || plotMode === 'transmittance') ? undefined : [-3.1416, -1.5708, 0, 1.5708, 3.1416]}
+                tickFormatter={(val) => {
+                  if (plotMode === 'reflectance' || plotMode === 'transmittance') return val.toFixed(1);
+                  if (Math.abs(val - 3.1416) < 0.1) return 'π';
+                  if (Math.abs(val - 1.5708) < 0.1) return 'π/2';
+                  if (Math.abs(val) < 0.1) return '0';
+                  if (Math.abs(val + 1.5708) < 0.1) return '-π/2';
+                  if (Math.abs(val + 3.1416) < 0.1) return '-π';
+                  return val.toFixed(2);
+                }}
+              >
+                <Label 
+                  value={
+                    plotMode === 'reflectance' ? "Reflectancia (R)" : 
+                    plotMode === 'transmittance' ? "Transmitancia (T)" : 
+                    "Diferencia de Fase Δφ (rad)"
+                  } 
+                  angle={-90} 
+                  position="insideLeft" 
+                  style={{ textAnchor: 'middle' }} 
                 />
+              </YAxis>
+              <Tooltip 
+                formatter={(value: any) => {
+                  const numVal = Number(value);
+                  if (plotMode === 'reflectance') {
+                    return [numVal.toFixed(4), 'Reflectancia'];
+                  } else if (plotMode === 'transmittance') {
+                    return [numVal.toFixed(4), 'Transmitancia'];
+                  } else {
+                    const degVal = (numVal * 180 / Math.PI).toFixed(1);
+                    return [`${numVal.toFixed(4)} rad (${degVal}°)`, 'Diferencia de Fase Δφ'];
+                  }
+                }}
+                labelFormatter={(label: any) => isSpectral ? `Wavelength: ${Number(label).toFixed(1)} nm` : `Ángulo: ${Number(label).toFixed(2)}°`}
+              />
 
-                <Legend verticalAlign="top" height={36} />
-                
-                {plotMode === 'amplitude' ? (
-                  <>
+              <Legend verticalAlign="top" height={36} />
+              
+              {plotMode === 'reflectance' && (
+                <>
+                  <Line 
+                    type="monotone" 
+                    dataKey="reflectanceBase" 
+                    name="Reflectancia Base"
+                    stroke="#d32f2f" 
+                    strokeWidth={2.5} 
+                    dot={false} 
+                    isAnimationActive={false}
+                  />
+                  {perturbedData && biosensing && (
                     <Line 
                       type="monotone" 
-                      dataKey="reflectanceBase" 
-                      name="Curva Base"
-                      stroke="#d32f2f" 
+                      dataKey="reflectancePerturbed" 
+                      name={`Reflectancia con Analito (Δn = +${deltaN})`}
+                      stroke="#1976d2" 
                       strokeWidth={2.5} 
+                      strokeDasharray="5 5"
                       dot={false} 
                       isAnimationActive={false}
                     />
-                    {perturbedData && biosensing && (
-                      <Line 
-                        type="monotone" 
-                        dataKey="reflectancePerturbed" 
-                        name={`Curva con Analito (Δn = +${deltaN})`}
-                        stroke="#1976d2" 
-                        strokeWidth={2.5} 
-                        strokeDasharray="5 5"
-                        dot={false} 
-                        isAnimationActive={false}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <>
+                  )}
+                </>
+              )}
+              {plotMode === 'transmittance' && (
+                <>
+                  <Line 
+                    type="monotone" 
+                    dataKey="transmittanceBase" 
+                    name="Transmitancia Base"
+                    stroke="#2e7d32" 
+                    strokeWidth={2.5} 
+                    dot={false} 
+                    isAnimationActive={false}
+                  />
+                  {perturbedData && biosensing && (
                     <Line 
                       type="monotone" 
-                      dataKey="phaseDiffBase" 
-                      name="Diferencia de Fase Base (Δφ)"
-                      stroke="#9c27b0" 
+                      dataKey="transmittancePerturbed" 
+                      name={`Transmitancia con Analito (Δn = +${deltaN})`}
+                      stroke="#ef6c00" 
                       strokeWidth={2.5} 
+                      strokeDasharray="5 5"
                       dot={false} 
                       isAnimationActive={false}
                     />
-                    {perturbedData && biosensing && (
-                      <Line 
-                        type="monotone" 
-                        dataKey="phaseDiffPerturbed" 
-                        name={`Diferencia de Fase con Analito (Δn = +${deltaN})`}
-                        stroke="#00bcd4" 
-                        strokeWidth={2.5} 
-                        strokeDasharray="5 5"
-                        dot={false} 
-                        isAnimationActive={false}
-                      />
-                    )}
-                  </>
-                )}
-
-                {thetaBase && (
-                  <ReferenceLine x={thetaBase} stroke={plotMode === 'amplitude' ? "#d32f2f" : "#9c27b0"} strokeDasharray="3 3">
-                    <Label value={isSpectral ? "λ_Base" : "θ_Base"} position="top" fill={plotMode === 'amplitude' ? "#d32f2f" : "#9c27b0"} fontSize={10} />
-                  </ReferenceLine>
-                )}
-                {perturbedData && biosensing && thetaPert && (
-                  <ReferenceLine x={thetaPert} stroke={plotMode === 'amplitude' ? "#1976d2" : "#00bcd4"} strokeDasharray="3 3">
-                    <Label 
-                      value={isSpectral ? "λ_Analito" : "θ_Analito"} 
-                      position="top" 
-                      dy={14} 
-                      fill={plotMode === 'amplitude' ? "#1976d2" : "#00bcd4"} 
-                      fontSize={10} 
+                  )}
+                </>
+              )}
+              {plotMode === 'phase' && (
+                <>
+                  <Line 
+                    type="monotone" 
+                    dataKey="phaseDiffBase" 
+                    name="Diferencia de Fase Base (Δφ)"
+                    stroke="#9c27b0" 
+                    strokeWidth={2.5} 
+                    dot={false} 
+                    isAnimationActive={false}
+                  />
+                  {perturbedData && biosensing && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="phaseDiffPerturbed" 
+                      name={`Diferencia de Fase con Analito (Δn = +${deltaN})`}
+                      stroke="#00bcd4" 
+                      strokeWidth={2.5} 
+                      strokeDasharray="5 5"
+                      dot={false} 
+                      isAnimationActive={false}
                     />
-                  </ReferenceLine>
-                )}
+                  )}
+                </>
+              )}
+
+              {thetaBase && (
+                <ReferenceLine x={thetaBase} stroke={plotMode === 'reflectance' ? "#d32f2f" : plotMode === 'transmittance' ? "#2e7d32" : "#9c27b0"} strokeDasharray="3 3">
+                  <Label value={isSpectral ? "λ_Base" : "θ_Base"} position="top" fill={plotMode === 'reflectance' ? "#d32f2f" : plotMode === 'transmittance' ? "#2e7d32" : "#9c27b0"} fontSize={10} />
+                </ReferenceLine>
+              )}
+              {perturbedData && biosensing && thetaPert && (
+                <ReferenceLine x={thetaPert} stroke={plotMode === 'reflectance' ? "#1976d2" : plotMode === 'transmittance' ? "#ef6c00" : "#00bcd4"} strokeDasharray="3 3">
+                  <Label 
+                    value={isSpectral ? "λ_Analito" : "θ_Analito"} 
+                    position="top" 
+                    dy={14} 
+                    fill={plotMode === 'reflectance' ? "#1976d2" : plotMode === 'transmittance' ? "#ef6c00" : "#00bcd4"} 
+                    fontSize={10} 
+                  />
+                </ReferenceLine>
+              )}
               </LineChart>
             </ResponsiveContainer>
           </Paper>

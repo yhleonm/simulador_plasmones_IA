@@ -134,6 +134,7 @@ def simulate_reflectance(req: SimulationRequest):
     if req.interrogation_mode == "spectral":
         wls = np.linspace(400, 1000, 300)
         R_vals = []
+        T_vals = []
         phase_tm = []
         phase_te = []
         phase_diff = []
@@ -141,12 +142,16 @@ def simulate_reflectance(req: SimulationRequest):
         
         try:
             for wl in wls:
-                R_tm, _, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
-                R_te, _, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+                R_tm, T_tm, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+                R_te, T_te, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
                 
                 # Reflectance for the selected polarization
                 R = R_tm if req.polarization == 'TM' else R_te
                 R_vals.append(float(R))
+                
+                # Transmittance for the selected polarization
+                T = T_tm if req.polarization == 'TM' else T_te
+                T_vals.append(float(T))
                 
                 # Phase calculation (argument in radians)
                 phi_tm = np.angle(r_tm)
@@ -172,6 +177,7 @@ def simulate_reflectance(req: SimulationRequest):
         return ReflectanceResponse(
             wavelengths=wls.tolist(),
             reflectance=R_vals,
+            transmittance=T_vals,
             resonance_wavelength=res_wl,
             min_reflectance=min_R,
             fwhm=float(fwhm),
@@ -184,18 +190,23 @@ def simulate_reflectance(req: SimulationRequest):
     else:
         angles = np.linspace(30, 85, 400)
         R_vals = []
+        T_vals = []
         phase_tm = []
         phase_te = []
         phase_diff = []
         
         try:
             for theta in angles:
-                R_tm, _, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
-                R_te, _, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+                R_tm, T_tm, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+                R_te, T_te, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
                 
                 # Reflectance for the selected polarization
                 R = R_tm if req.polarization == 'TM' else R_te
                 R_vals.append(float(R))
+                
+                # Transmittance for the selected polarization
+                T = T_tm if req.polarization == 'TM' else T_te
+                T_vals.append(float(T))
                 
                 # Phase calculation (argument in radians)
                 phi_tm = np.angle(r_tm)
@@ -222,6 +233,7 @@ def simulate_reflectance(req: SimulationRequest):
         return ReflectanceResponse(
             angles=angles.tolist(),
             reflectance=R_vals,
+            transmittance=T_vals,
             resonance_angle=res_angle,
             min_reflectance=min_R,
             fwhm=float(fwhm),
@@ -851,16 +863,19 @@ def simulate_thermal_sweep(req: SimulationRequest):
         
         for temp in temperatures:
             R_vals = []
+            T_vals = []
             for wl in wls:
                 # We use TM or TE based on request polarization
                 pol = req.polarization
-                R_tm, _ = calculate_tmm(wl, fixed_angle, layers, pol, temperature_c=temp)
+                R_tm, T_tm = calculate_tmm(wl, fixed_angle, layers, pol, temperature_c=temp)
                 R_vals.append(float(R_tm))
+                T_vals.append(float(T_tm))
             min_idx = np.argmin(R_vals)
             res_wl = float(wls[min_idx])
             curves.append(ThermalSweepCurve(
                 temperature_c=temp,
                 reflectance=R_vals,
+                transmittance=T_vals,
                 resonance_wavelength=res_wl
             ))
             
@@ -872,15 +887,18 @@ def simulate_thermal_sweep(req: SimulationRequest):
         angles = np.linspace(30, 85, 400)
         for temp in temperatures:
             R_vals = []
+            T_vals = []
             for theta in angles:
                 pol = req.polarization
-                R_tm, _ = calculate_tmm(req.wavelength_nm, theta, layers, pol, temperature_c=temp)
+                R_tm, T_tm = calculate_tmm(req.wavelength_nm, theta, layers, pol, temperature_c=temp)
                 R_vals.append(float(R_tm))
+                T_vals.append(float(T_tm))
             min_idx = np.argmin(R_vals)
             res_angle = float(angles[min_idx])
             curves.append(ThermalSweepCurve(
                 temperature_c=temp,
                 reflectance=R_vals,
+                transmittance=T_vals,
                 resonance_angle=res_angle
             ))
             

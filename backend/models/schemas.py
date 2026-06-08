@@ -32,6 +32,7 @@ class ReflectanceResponse(BaseModel):
     angles: Optional[List[float]] = None
     wavelengths: Optional[List[float]] = None
     reflectance: List[float]
+    transmittance: Optional[List[float]] = None
     resonance_angle: Optional[float] = None
     resonance_wavelength: Optional[float] = None
     min_reflectance: Optional[float]
@@ -41,6 +42,7 @@ class ReflectanceResponse(BaseModel):
     phase_tm: Optional[List[float]] = None
     phase_te: Optional[List[float]] = None
     phase_diff: Optional[List[float]] = None
+
 
 
 class FieldProfileResponse(BaseModel):
@@ -159,6 +161,7 @@ class CurveFitResponse(BaseModel):
 class ThermalSweepCurve(BaseModel):
     temperature_c: float
     reflectance: List[float]
+    transmittance: Optional[List[float]] = None
     resonance_angle: Optional[float] = None
     resonance_wavelength: Optional[float] = None
 
