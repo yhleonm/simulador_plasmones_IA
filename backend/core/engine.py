@@ -97,6 +97,7 @@ def get_material_display_name(filename):
     name_without_ext = os.path.splitext(filename)[0]
     return name_without_ext.replace("_", " ")
 
+@lru_cache(maxsize=1)
 def get_available_materials():
     """Retorna una lista dinámica de todos los materiales disponibles."""
     materials_list = [
@@ -339,9 +340,11 @@ def _get_refractive_index_base(layer_info, wavelength_nm, temperature_c=20.0):
     return 1.5 + 0j
 
 def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient=False, temperature_c=20.0):
-    """Calcula Reflectancia y Transmitancia usando TMM con ajuste termo-óptico."""
+    """Calcula Reflectancia y Transmitancia usando TMM con ajuste termo-óptico (soportando theta_deg escalar o array)."""
     k0 = 2 * np.pi / wavelength_nm
-    theta_rad = np.radians(theta_deg)
+    is_scalar = np.isscalar(theta_deg)
+    theta_deg_arr = np.atleast_1d(theta_deg)
+    theta_rad = np.radians(theta_deg_arr)
     
     ns = [get_refractive_index(L, wavelength_nm, temperature_c) for L in layers]
     ds = [L['d'] for L in layers]
@@ -352,7 +355,10 @@ def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient
     cos0 = np.lib.scimath.sqrt(1 - sin0**2)
     q0 = n0 / cos0 if pol == 'TM' else n0 * cos0
     
-    M = np.identity(2, dtype=complex)
+    N_angles = len(theta_deg_arr)
+    M = np.zeros((N_angles, 2, 2), dtype=complex)
+    M[:, 0, 0] = 1.0
+    M[:, 1, 1] = 1.0
     
     for i in range(1, len(ns) - 1):
         if materials[i] == "Grafeno":
@@ -365,36 +371,59 @@ def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient
                 cos_adj = np.lib.scimath.sqrt(1 - ((n0 / n_prev) * sin0)**2)
                 sigma_norm = sigma_total * Z0 / cos_adj
             else:
-                sigma_norm = sigma_total * Z0
-            M = np.dot(M, np.array([[1.0, 0.0], [sigma_norm, 1.0]], dtype=complex))
+                sigma_norm = np.full(N_angles, sigma_total * Z0, dtype=complex)
+            
+            M[:, 0, 0] += M[:, 0, 1] * sigma_norm
+            M[:, 1, 0] += M[:, 1, 1] * sigma_norm
         else:
             n, d = ns[i], ds[i]
             cos_theta = np.lib.scimath.sqrt(1 - ((n0 / n) * sin0)**2)
             q = n / cos_theta if pol == 'TM' else n * cos_theta
             delta = k0 * n * d * cos_theta
-            M_layer = np.array([[np.cos(delta), (-1j / q) * np.sin(delta)], 
-                                [(-1j * q) * np.sin(delta), np.cos(delta)]])
-            M = np.dot(M, M_layer)
+            
+            cos_d = np.cos(delta)
+            sin_d = np.sin(delta)
+            
+            B00 = cos_d
+            B01 = (-1j / q) * sin_d
+            B10 = (-1j * q) * sin_d
+            B11 = cos_d
+            
+            M00_new = M[:, 0, 0] * B00 + M[:, 0, 1] * B10
+            M01_new = M[:, 0, 0] * B01 + M[:, 0, 1] * B11
+            M10_new = M[:, 1, 0] * B00 + M[:, 1, 1] * B10
+            M11_new = M[:, 1, 0] * B01 + M[:, 1, 1] * B11
+            
+            M[:, 0, 0] = M00_new
+            M[:, 0, 1] = M01_new
+            M[:, 1, 0] = M10_new
+            M[:, 1, 1] = M11_new
 
     nN = ns[-1]
     cosN = np.lib.scimath.sqrt(1 - ((n0 / nN) * sin0)**2)
     qN = nN / cosN if pol == 'TM' else nN * cosN
     
-    den = (M[0,0] + M[0,1]*qN)*q0 + (M[1,0] + M[1,1]*qN)
-    r = ((M[0,0] + M[0,1]*qN)*q0 - (M[1,0] + M[1,1]*qN)) / den
+    den = (M[:, 0, 0] + M[:, 0, 1]*qN)*q0 + (M[:, 1, 0] + M[:, 1, 1]*qN)
+    r = ((M[:, 0, 0] + M[:, 0, 1]*qN)*q0 - (M[:, 1, 0] + M[:, 1, 1]*qN)) / den
     R = np.abs(r)**2
     T = (np.real(qN) / np.real(q0)) * np.abs(2*q0 / den)**2
-    # Guardrails to enforce physical energy conservation (R + T <= 1.0)
-    kx = np.real(n0) * np.sin(np.deg2rad(theta_deg))  # componente k_x conservada
-    is_evanescent = (np.abs(np.imag(nN)) < 1e-9) and (kx >= np.real(nN) - 1e-10)
-    if is_evanescent:
-        T = 0.0
-    else:
-        T = np.clip(T, 0.0, 1.0 - R)
     
-    if return_coefficient:
-        return R, T, r
-    return R, T
+    # Guardrails to enforce physical energy conservation (R + T <= 1.0)
+    kx = np.real(n0) * np.sin(theta_rad)
+    is_evanescent = (np.abs(np.imag(nN)) < 1e-9) & (kx >= np.real(nN) - 1e-10)
+    T = np.where(is_evanescent, 0.0, np.clip(T, 0.0, 1.0 - R))
+    
+    if is_scalar:
+        R_val = float(R[0])
+        T_val = float(T[0])
+        if return_coefficient:
+            r_val = complex(r[0])
+            return R_val, T_val, r_val
+        return R_val, T_val
+    else:
+        if return_coefficient:
+            return R, T, r
+        return R, T
 
 def calculate_fwhm(angles, reflectance, res_angle):
     """Calcula el Full Width at Half Maximum (FWHM) del dip de resonancia."""

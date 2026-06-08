@@ -189,35 +189,21 @@ def simulate_reflectance(req: SimulationRequest):
         )
     else:
         angles = np.linspace(30, 85, 400)
-        R_vals = []
-        T_vals = []
-        phase_tm = []
-        phase_te = []
-        phase_diff = []
-        
         try:
-            for theta in angles:
-                R_tm, T_tm, r_tm = calculate_tmm(req.wavelength_nm, theta, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
-                R_te, T_te, r_te = calculate_tmm(req.wavelength_nm, theta, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
-                
-                # Reflectance for the selected polarization
-                R = R_tm if req.polarization == 'TM' else R_te
-                R_vals.append(float(R))
-                
-                # Transmittance for the selected polarization
-                T = T_tm if req.polarization == 'TM' else T_te
-                T_vals.append(float(T))
-                
-                # Phase calculation (argument in radians)
-                phi_tm = np.angle(r_tm)
-                phi_te = np.angle(r_te)
-                diff = phi_tm - phi_te
-                # Wrap to [-pi, pi]
-                diff = np.arctan2(np.sin(diff), np.cos(diff))
-                
-                phase_tm.append(float(phi_tm))
-                phase_te.append(float(phi_te))
-                phase_diff.append(float(diff))
+            R_tm_arr, T_tm_arr, r_tm_arr = calculate_tmm(req.wavelength_nm, angles, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+            R_te_arr, T_te_arr, r_te_arr = calculate_tmm(req.wavelength_nm, angles, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+            
+            R_vals = (R_tm_arr if req.polarization == 'TM' else R_te_arr).tolist()
+            T_vals = (T_tm_arr if req.polarization == 'TM' else T_te_arr).tolist()
+            
+            phase_tm_arr = np.angle(r_tm_arr)
+            phase_te_arr = np.angle(r_te_arr)
+            diff_arr = phase_tm_arr - phase_te_arr
+            diff_wrapped = np.arctan2(np.sin(diff_arr), np.cos(diff_arr))
+            
+            phase_tm = phase_tm_arr.tolist()
+            phase_te = phase_te_arr.tolist()
+            phase_diff = diff_wrapped.tolist()
         except Exception as e:
             print(f"ERROR in angular TMM calculation: {e}")
             raise e
@@ -350,19 +336,32 @@ def optimize_structure(req: OptimizationRequest):
     def objective(d_values):
         temp_layers = [L.model_dump() for L in req.layers]
         for i, idx in enumerate(req.optimize_indices):
-            temp_layers[idx]['d'] = d_values[i]
+            if temp_layers[idx]['material'] == "Grafeno":
+                num_layers = int(np.round(d_values[i]))
+                temp_layers[idx]['custom_layers'] = num_layers
+                temp_layers[idx]['d'] = float(num_layers * 0.335)
+            else:
+                temp_layers[idx]['d'] = float(d_values[i])
         
-        # Fast angular scan to find resonance curve
-        angles_opt = np.linspace(35, 80, 300)
-        rs = []
-        for th in angles_opt:
-            R, _ = calculate_tmm(wl, th, temp_layers, pol)
-            rs.append(R)
-        rs = np.array(rs)
+        # Fast coarse angular scan (80 points) to locate dip and FWHM
+        angles_opt = np.linspace(35, 80, 80)
+        rs, _ = calculate_tmm(wl, angles_opt, temp_layers, pol)
         
         min_R = np.min(rs)
         min_idx = np.argmin(rs)
-        res_angle = angles_opt[min_idx]
+        
+        # Parabolic interpolation for sub-grid dip angle precision
+        if min_idx == 0 or min_idx == len(rs) - 1:
+            res_angle = float(angles_opt[min_idx])
+        else:
+            x1, x2, x3 = angles_opt[min_idx-1], angles_opt[min_idx], angles_opt[min_idx+1]
+            y1, y2, y3 = rs[min_idx-1], rs[min_idx], rs[min_idx+1]
+            denom = y3 - 2 * y2 + y1
+            if abs(denom) < 1e-9:
+                res_angle = float(x2)
+            else:
+                h = x2 - x1
+                res_angle = float(x2 - (h / 2.0) * (y3 - y1) / denom)
         
         # Calculate FWHM
         half_max = (1.0 + min_R) / 2.0
@@ -392,14 +391,21 @@ def optimize_structure(req: OptimizationRequest):
                 "custom_k": k_base
             }
             
-            rs_pert = []
-            for th in angles_opt:
-                R_pert, _ = calculate_tmm(wl, th, temp_layers_perturbed, pol)
-                rs_pert.append(R_pert)
-            rs_pert = np.array(rs_pert)
-            
+            rs_pert, _ = calculate_tmm(wl, angles_opt, temp_layers_perturbed, pol)
             min_idx_pert = np.argmin(rs_pert)
-            res_angle_pert = angles_opt[min_idx_pert]
+            
+            # Parabolic interpolation for perturbed dip
+            if min_idx_pert == 0 or min_idx_pert == len(rs_pert) - 1:
+                res_angle_pert = float(angles_opt[min_idx_pert])
+            else:
+                x1, x2, x3 = angles_opt[min_idx_pert-1], angles_opt[min_idx_pert], angles_opt[min_idx_pert+1]
+                y1, y2, y3 = rs_pert[min_idx_pert-1], rs_pert[min_idx_pert], rs_pert[min_idx_pert+1]
+                denom = y3 - 2 * y2 + y1
+                if abs(denom) < 1e-9:
+                    res_angle_pert = float(x2)
+                else:
+                    h = x2 - x1
+                    res_angle_pert = float(x2 - (h / 2.0) * (y3 - y1) / denom)
             
             shift = abs(res_angle_pert - res_angle)
             sens = shift / 0.005  # S = shift / delta_n
@@ -421,19 +427,22 @@ def optimize_structure(req: OptimizationRequest):
         b_max = req.bounds_max[i] if (req.bounds_max is not None and i < len(req.bounds_max)) else 90.0
         bounds.append((b_min, b_max))
         
-    result = differential_evolution(objective, bounds, seed=42, maxiter=30, popsize=10)
+    result = differential_evolution(objective, bounds, seed=42, maxiter=15, popsize=8)
     
     optimized_layers = [L.model_copy() for L in req.layers]
     for i, idx in enumerate(req.optimize_indices):
-        optimized_layers[idx].d = float(result.x[i])
+        if optimized_layers[idx].material == "Grafeno":
+            num_layers = int(np.round(result.x[i]))
+            optimized_layers[idx].custom_layers = num_layers
+            optimized_layers[idx].d = float(num_layers * 0.335)
+        else:
+            optimized_layers[idx].d = float(result.x[i])
         
     # Calculate actual min reflectance of optimized configuration
     optimized_layers_dump = [L.model_dump() for L in optimized_layers]
     angles = np.linspace(35, 80, 300)
-    actual_min_R = 1.0
-    for th in angles:
-        R, _ = calculate_tmm(req.wavelength_nm, th, optimized_layers_dump, req.polarization)
-        if R < actual_min_R: actual_min_R = R
+    actual_min_R_arr, _ = calculate_tmm(req.wavelength_nm, angles, optimized_layers_dump, req.polarization)
+    actual_min_R = float(np.min(actual_min_R_arr))
         
     return OptimizationResponse(
         optimized_layers=optimized_layers,
@@ -449,12 +458,10 @@ def simulate_reflectance_2d(req: Simulation2DRequest):
     
     matrix = []
     try:
+        angles_arr = np.array(angles)
         for wl in wavelengths:
-            row = []
-            for theta in angles:
-                R, _ = calculate_tmm(wl, theta, layers, req.polarization)
-                row.append(float(R))
-            matrix.append(row)
+            R_arr, _ = calculate_tmm(wl, angles_arr, layers, req.polarization)
+            matrix.append(R_arr.tolist())
     except Exception as e:
         print(f"ERROR in 2D TMM calculation: {e}")
         raise e
@@ -543,10 +550,7 @@ def simulate_kinetics(req: KineticsRequest):
             return float(wavelengths[np.argmin(r_vals)])
         else:
             angles = np.linspace(30, 85, 550)
-            r_vals = []
-            for th in angles:
-                r, _ = calculate_tmm(req.wavelength_nm, th, layers_config, req.polarization)
-                r_vals.append(r)
+            r_vals, _ = calculate_tmm(req.wavelength_nm, angles, layers_config, req.polarization)
             return float(angles[np.argmin(r_vals)])
 
     # Helper to find resonance with narrow scan for speed and precision
@@ -565,10 +569,7 @@ def simulate_kinetics(req: KineticsRequest):
             th_min = max(30.0, baseline_val - 1.5)
             th_max = min(89.0, baseline_val + 6.0)
             angles = np.linspace(th_min, th_max, 150)
-            r_vals = []
-            for theta in angles:
-                r, _ = calculate_tmm(req.wavelength_nm, theta, layers_config, req.polarization)
-                r_vals.append(r)
+            r_vals, _ = calculate_tmm(req.wavelength_nm, angles, layers_config, req.polarization)
             return float(angles[np.argmin(r_vals)])
 
     # 1. Calculate baseline resonance (at t=0, adlayer thickness = 0)
@@ -644,10 +645,7 @@ def analyze_xai(req: XAIRequest):
             return float(wavelengths[np.argmin(r_vals)])
         else:
             angles = np.linspace(30, 85, 300)
-            r_vals = []
-            for th in angles:
-                r, _ = calculate_tmm(req.wavelength_nm, th, layers_config, req.polarization)
-                r_vals.append(r)
+            r_vals, _ = calculate_tmm(req.wavelength_nm, angles, layers_config, req.polarization)
             return float(angles[np.argmin(r_vals)])
             
     X_samples = []
@@ -729,17 +727,9 @@ def fit_curve(req: CurveFitRequest):
     bounds = [(p.min_val, p.max_val) for p in req.parameters]
     
     def loss_func(params_to_test):
-        y_sim = []
-        for i, x in enumerate(req.x_exp):
-            if req.interrogation_mode == "angular":
-                wl = req.wavelength_nm
-                theta = x
-            else:
-                wl = x
-                theta = req.fixed_angle_deg
-                
+        if req.interrogation_mode == "angular":
+            wl = req.wavelength_nm
             local_layers = [L.model_dump() for L in req.layers]
-            
             for idx, p in enumerate(req.parameters):
                 val = float(params_to_test[idx])
                 layer_idx = p.layer_index
@@ -756,25 +746,45 @@ def fit_curve(req: CurveFitRequest):
                     elif param_type == "k":
                         local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
                         local_layers[layer_idx]["custom_k"] = val
-            
             try:
-                R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
-                y_sim.append(float(R))
+                R_arr, _ = calculate_tmm(wl, req.x_exp, local_layers, req.polarization)
+                y_sim = R_arr
             except Exception:
-                y_sim.append(1.0)
+                y_sim = np.ones_like(req.x_exp)
+        else:
+            y_sim = []
+            for i, x in enumerate(req.x_exp):
+                wl = x
+                theta = req.fixed_angle_deg
+                local_layers = [L.model_dump() for L in req.layers]
+                for idx, p in enumerate(req.parameters):
+                    val = float(params_to_test[idx])
+                    layer_idx = p.layer_index
+                    param_type = p.parameter
+                    
+                    if param_type == "d":
+                        local_layers[layer_idx]["d"] = val
+                    else:
+                        orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                        local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                        if param_type == "n":
+                            local_layers[layer_idx]["custom_n"] = val
+                            local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                        elif param_type == "k":
+                            local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                            local_layers[layer_idx]["custom_k"] = val
+                try:
+                    R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+                    y_sim.append(float(R))
+                except Exception:
+                    y_sim.append(1.0)
+            y_sim = np.array(y_sim)
                 
-        return float(np.mean((np.array(y_sim) - y_exp) ** 2))
+        return float(np.mean((y_sim - y_exp) ** 2))
 
     # Pre-calculate initial curve
-    y_initial = []
-    for x in req.x_exp:
-        if req.interrogation_mode == "angular":
-            wl = req.wavelength_nm
-            theta = x
-        else:
-            wl = x
-            theta = req.fixed_angle_deg
-            
+    if req.interrogation_mode == "angular":
+        wl = req.wavelength_nm
         local_layers = [L.model_dump() for L in req.layers]
         for p in req.parameters:
             layer_idx = p.layer_index
@@ -791,10 +801,35 @@ def fit_curve(req: CurveFitRequest):
                     local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
                     local_layers[layer_idx]["custom_k"] = val
         try:
-            R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
-            y_initial.append(float(R))
+            R_arr, _ = calculate_tmm(wl, req.x_exp, local_layers, req.polarization)
+            y_initial = R_arr.tolist()
         except Exception:
-            y_initial.append(1.0)
+            y_initial = [1.0] * len(req.x_exp)
+    else:
+        y_initial = []
+        for x in req.x_exp:
+            wl = x
+            theta = req.fixed_angle_deg
+            local_layers = [L.model_dump() for L in req.layers]
+            for p in req.parameters:
+                layer_idx = p.layer_index
+                val = p.guess
+                if p.parameter == "d":
+                    local_layers[layer_idx]["d"] = val
+                else:
+                    orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                    local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                    if p.parameter == "n":
+                        local_layers[layer_idx]["custom_n"] = val
+                        local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                    elif p.parameter == "k":
+                        local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                        local_layers[layer_idx]["custom_k"] = val
+            try:
+                R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+                y_initial.append(float(R))
+            except Exception:
+                y_initial.append(1.0)
 
     try:
         res = minimize(loss_func, x0, bounds=bounds, method='L-BFGS-B')
@@ -807,15 +842,8 @@ def fit_curve(req: CurveFitRequest):
         )
     
     # Calculate optimized final curve
-    y_sim = []
-    for x in req.x_exp:
-        if req.interrogation_mode == "angular":
-            wl = req.wavelength_nm
-            theta = x
-        else:
-            wl = x
-            theta = req.fixed_angle_deg
-            
+    if req.interrogation_mode == "angular":
+        wl = req.wavelength_nm
         local_layers = [L.model_dump() for L in req.layers]
         for idx, p in enumerate(req.parameters):
             layer_idx = p.layer_index
@@ -832,10 +860,35 @@ def fit_curve(req: CurveFitRequest):
                     local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
                     local_layers[layer_idx]["custom_k"] = val
         try:
-            R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
-            y_sim.append(float(R))
+            R_arr, _ = calculate_tmm(wl, req.x_exp, local_layers, req.polarization)
+            y_sim = R_arr.tolist()
         except Exception:
-            y_sim.append(1.0)
+            y_sim = [1.0] * len(req.x_exp)
+    else:
+        y_sim = []
+        for x in req.x_exp:
+            wl = x
+            theta = req.fixed_angle_deg
+            local_layers = [L.model_dump() for L in req.layers]
+            for idx, p in enumerate(req.parameters):
+                layer_idx = p.layer_index
+                val = float(optimized_vals[idx])
+                if p.parameter == "d":
+                    local_layers[layer_idx]["d"] = val
+                else:
+                    orig_complex = get_refractive_index(req.layers[layer_idx].model_dump(), wl)
+                    local_layers[layer_idx]["material"] = "Personalizado (Manual)"
+                    if p.parameter == "n":
+                        local_layers[layer_idx]["custom_n"] = val
+                        local_layers[layer_idx]["custom_k"] = float(orig_complex.imag)
+                    elif p.parameter == "k":
+                        local_layers[layer_idx]["custom_n"] = float(orig_complex.real)
+                        local_layers[layer_idx]["custom_k"] = val
+            try:
+                R, _ = calculate_tmm(wl, theta, local_layers, req.polarization)
+                y_sim.append(float(R))
+            except Exception:
+                y_sim.append(1.0)
             
     optimized_params = []
     for idx, p in enumerate(req.parameters):
@@ -886,13 +939,10 @@ def simulate_thermal_sweep(req: SimulationRequest):
     else:
         angles = np.linspace(30, 85, 400)
         for temp in temperatures:
-            R_vals = []
-            T_vals = []
-            for theta in angles:
-                pol = req.polarization
-                R_tm, T_tm = calculate_tmm(req.wavelength_nm, theta, layers, pol, temperature_c=temp)
-                R_vals.append(float(R_tm))
-                T_vals.append(float(T_tm))
+            pol = req.polarization
+            R_vals_arr, T_vals_arr = calculate_tmm(req.wavelength_nm, angles, layers, pol, temperature_c=temp)
+            R_vals = R_vals_arr.tolist()
+            T_vals = T_vals_arr.tolist()
             min_idx = np.argmin(R_vals)
             res_angle = float(angles[min_idx])
             curves.append(ThermalSweepCurve(
@@ -925,13 +975,14 @@ def simulate_calibration(req: CalibrationRequest):
         layers[-1]["material"] = "Personalizado (Manual)"
         layers[-1]["custom_k"] = 0.0
         
-        R_vals = []
-        for x in x_grid:
-            if req.interrogation_mode == "spectral":
+        if req.interrogation_mode == "spectral":
+            R_vals = []
+            for x in x_grid:
                 R, _ = calculate_tmm(x, req.fixed_angle_deg or 45.0, layers, req.polarization, temperature_c=req.temperature_c)
-            else:
-                R, _ = calculate_tmm(req.wavelength_nm, x, layers, req.polarization, temperature_c=req.temperature_c)
-            R_vals.append(float(R))
+                R_vals.append(float(R))
+        else:
+            R_vals_arr, _ = calculate_tmm(req.wavelength_nm, x_grid, layers, req.polarization, temperature_c=req.temperature_c)
+            R_vals = R_vals_arr.tolist()
             
         min_idx = np.argmin(R_vals)
         if min_idx == 0 or min_idx == len(R_vals) - 1:

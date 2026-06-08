@@ -89,8 +89,8 @@ const LayerEditor: React.FC<Props> = ({
     if (optIndices.length === 0) return;
     setOptimizing(true);
     
-    const bounds_min = optIndices.map(idx => minBounds[idx] !== undefined ? minBounds[idx] : 20);
-    const bounds_max = optIndices.map(idx => maxBounds[idx] !== undefined ? maxBounds[idx] : 90);
+    const bounds_min = optIndices.map(idx => minBounds[idx] !== undefined ? minBounds[idx] : (layers[idx].material === 'Grafeno' ? 1 : 20));
+    const bounds_max = optIndices.map(idx => maxBounds[idx] !== undefined ? maxBounds[idx] : (layers[idx].material === 'Grafeno' ? 10 : 90));
 
     try {
       const result = await optimizeStructure({
@@ -315,22 +315,47 @@ const LayerEditor: React.FC<Props> = ({
                 {optIndices.includes(index) && (
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 'bold' }}>LÍMITES IA:</Typography>
-                    <TextField
-                      label="Mín (nm)"
-                      type="number"
-                      size="small"
-                      sx={{ width: 90 }}
-                      value={minBounds[index] !== undefined ? minBounds[index] : 20}
-                      onChange={(e) => setMinBounds({ ...minBounds, [index]: Number(e.target.value) })}
-                    />
-                    <TextField
-                      label="Máx (nm)"
-                      type="number"
-                      size="small"
-                      sx={{ width: 90 }}
-                      value={maxBounds[index] !== undefined ? maxBounds[index] : 90}
-                      onChange={(e) => setMaxBounds({ ...maxBounds, [index]: Number(e.target.value) })}
-                    />
+                    {layer.material === 'Grafeno' ? (
+                      <>
+                        <TextField
+                          label="Mín (capas)"
+                          type="number"
+                          size="small"
+                          slotProps={{ htmlInput: { step: 1, min: 1, max: 10 } }}
+                          sx={{ width: 100 }}
+                          value={minBounds[index] !== undefined ? minBounds[index] : 1}
+                          onChange={(e) => setMinBounds({ ...minBounds, [index]: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Máx (capas)"
+                          type="number"
+                          size="small"
+                          slotProps={{ htmlInput: { step: 1, min: 1, max: 10 } }}
+                          sx={{ width: 100 }}
+                          value={maxBounds[index] !== undefined ? maxBounds[index] : 10}
+                          onChange={(e) => setMaxBounds({ ...maxBounds, [index]: Number(e.target.value) })}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <TextField
+                          label="Mín (nm)"
+                          type="number"
+                          size="small"
+                          sx={{ width: 90 }}
+                          value={minBounds[index] !== undefined ? minBounds[index] : 20}
+                          onChange={(e) => setMinBounds({ ...minBounds, [index]: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Máx (nm)"
+                          type="number"
+                          size="small"
+                          sx={{ width: 90 }}
+                          value={maxBounds[index] !== undefined ? maxBounds[index] : 90}
+                          onChange={(e) => setMaxBounds({ ...maxBounds, [index]: Number(e.target.value) })}
+                        />
+                      </>
+                    )}
                   </Stack>
                 )}
               </Stack>
