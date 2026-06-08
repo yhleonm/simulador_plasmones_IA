@@ -371,7 +371,7 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                 <Label value={isSpectral ? "Longitud de Onda (nm)" : "Ángulo de Incidencia (deg)"} offset={-10} position="insideBottom" />
               </XAxis>
               <YAxis 
-                domain={(plotMode === 'reflectance' || plotMode === 'transmittance') ? [0, 1.05] : [-3.5, 3.5]} 
+                domain={(plotMode === 'reflectance' || plotMode === 'transmittance') ? [0, 1.0] : [-3.5, 3.5]} 
                 tick={{ fontSize: 12 }}
                 ticks={(plotMode === 'reflectance' || plotMode === 'transmittance') ? undefined : [-3.1416, -1.5708, 0, 1.5708, 3.1416]}
                 tickFormatter={(val) => {

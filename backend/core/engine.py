@@ -384,6 +384,13 @@ def calculate_tmm(wavelength_nm, theta_deg, layers, pol='TM', return_coefficient
     r = ((M[0,0] + M[0,1]*qN)*q0 - (M[1,0] + M[1,1]*qN)) / den
     R = np.abs(r)**2
     T = (np.real(qN) / np.real(q0)) * np.abs(2*q0 / den)**2
+    # Guardrails to enforce physical energy conservation (R + T <= 1.0)
+    kx = np.real(n0) * np.sin(np.deg2rad(theta_deg))  # componente k_x conservada
+    is_evanescent = (np.abs(np.imag(nN)) < 1e-9) and (kx >= np.real(nN) - 1e-10)
+    if is_evanescent:
+        T = 0.0
+    else:
+        T = np.clip(T, 0.0, 1.0 - R)
     
     if return_coefficient:
         return R, T, r
