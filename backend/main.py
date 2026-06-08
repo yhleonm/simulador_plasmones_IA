@@ -11,7 +11,8 @@ from backend.models.schemas import (
     KineticsResponse, XAIRequest, XAIResponse, CurveFitRequest, 
     CurveFitResponse, FitParameterConfig, ThermalSweepResponse, 
     ThermalSweepCurve, CalibrationRequest, CalibrationResponse,
-    MonteCarloRequest, MonteCarloResponse, MonteCarloStats, LayerPerturbation
+    MonteCarloRequest, MonteCarloResponse, MonteCarloStats, LayerPerturbation,
+    PhaseSensitivityRequest, PhaseSensitivityResponse
 )
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution, minimize
@@ -1190,6 +1191,111 @@ def simulate_montecarlo(req: MonteCarloRequest):
         sample_curves=sample_curves,
         resonance_values=resonance_values.tolist(),
         stats=stats
+    )
+
+
+@app.post("/api/simulate/phase-sensitivity", response_model=PhaseSensitivityResponse)
+def simulate_phase_sensitivity(req: PhaseSensitivityRequest):
+    nominal_layers = [L.model_dump() for L in req.layers]
+    perturbed_layers = [L.copy() for L in nominal_layers]
+    perturbed_layers[-1]["delta_n"] = req.delta_n or 1e-4
+    
+    if req.interrogation_mode == "spectral":
+        x_grid = np.linspace(400, 1000, 400)
+    else:
+        x_grid = np.linspace(30, 85, 500)
+        
+    if req.interrogation_mode == "spectral":
+        R_nom_tm, R_nom_te = [], []
+        phi_nom_tm, phi_nom_te = [], []
+        R_pert_tm, R_pert_te = [], []
+        phi_pert_tm, phi_pert_te = [], []
+        
+        for wl in x_grid:
+            _, _, r_nom_tm = calculate_tmm(wl, req.fixed_angle_deg or 45.0, nominal_layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+            _, _, r_nom_te = calculate_tmm(wl, req.fixed_angle_deg or 45.0, nominal_layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+            
+            _, _, r_pert_tm = calculate_tmm(wl, req.fixed_angle_deg or 45.0, perturbed_layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+            _, _, r_pert_te = calculate_tmm(wl, req.fixed_angle_deg or 45.0, perturbed_layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+            
+            R_nom_tm.append(np.abs(r_nom_tm)**2)
+            R_nom_te.append(np.abs(r_nom_te)**2)
+            phi_nom_tm.append(np.angle(r_nom_tm))
+            phi_nom_te.append(np.angle(r_nom_te))
+            
+            R_pert_tm.append(np.abs(r_pert_tm)**2)
+            R_pert_te.append(np.abs(r_pert_te)**2)
+            phi_pert_tm.append(np.angle(r_pert_tm))
+            phi_pert_te.append(np.angle(r_pert_te))
+            
+        R_nom_tm = np.array(R_nom_tm)
+        R_nom_te = np.array(R_nom_te)
+        phi_nom_tm = np.array(phi_nom_tm)
+        phi_nom_te = np.array(phi_nom_te)
+        
+        R_pert_tm = np.array(R_pert_tm)
+        R_pert_te = np.array(R_pert_te)
+        phi_pert_tm = np.array(phi_pert_tm)
+        phi_pert_te = np.array(phi_pert_te)
+    else:
+        R_nom_tm_arr, _, r_nom_tm = calculate_tmm(req.wavelength_nm, x_grid, nominal_layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+        R_nom_te_arr, _, r_nom_te = calculate_tmm(req.wavelength_nm, x_grid, nominal_layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+        phi_nom_tm = np.angle(r_nom_tm)
+        phi_nom_te = np.angle(r_nom_te)
+        
+        R_pert_tm_arr, _, r_pert_tm = calculate_tmm(req.wavelength_nm, x_grid, perturbed_layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
+        R_pert_te_arr, _, r_pert_te = calculate_tmm(req.wavelength_nm, x_grid, perturbed_layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
+        phi_pert_tm = np.angle(r_pert_tm)
+        phi_pert_te = np.angle(r_pert_te)
+        
+        R_nom_tm = R_nom_tm_arr
+        R_nom_te = R_nom_te_arr
+        R_pert_tm = R_pert_tm_arr
+        R_pert_te = R_pert_te_arr
+
+    phase_nom = phi_nom_tm - phi_nom_te
+    phase_nom = np.arctan2(np.sin(phase_nom), np.cos(phase_nom))
+    
+    phase_pert = phi_pert_tm - phi_pert_te
+    phase_pert = np.arctan2(np.sin(phase_pert), np.cos(phase_pert))
+    
+    diff_phase = phase_pert - phase_nom
+    diff_phase_wrapped = np.arctan2(np.sin(diff_phase), np.cos(diff_phase))
+    
+    deriv_phase = diff_phase_wrapped / (req.delta_n or 1e-4)
+    
+    if req.polarization == 'TM':
+        ref_nom = R_nom_tm
+        ref_pert = R_pert_tm
+    else:
+        ref_nom = R_nom_te
+        ref_pert = R_pert_te
+        
+    deriv_intensity = (ref_pert - ref_nom) / (req.delta_n or 1e-4)
+    
+    abs_deriv_phase = np.abs(deriv_phase)
+    max_phase_idx = np.argmax(abs_deriv_phase)
+    max_phase_sens = float(deriv_phase[max_phase_idx])
+    max_phase_sens_x = float(x_grid[max_phase_idx])
+    
+    abs_deriv_intensity = np.abs(deriv_intensity)
+    max_intensity_idx = np.argmax(abs_deriv_intensity)
+    max_intensity_sens = float(deriv_intensity[max_intensity_idx])
+    max_intensity_sens_x = float(x_grid[max_intensity_idx])
+    
+    return PhaseSensitivityResponse(
+        x_grid=x_grid.tolist(),
+        phase_nominal=phase_nom.tolist(),
+        phase_perturbed=phase_pert.tolist(),
+        reflectance_nominal=ref_nom.tolist(),
+        reflectance_perturbed=ref_pert.tolist(),
+        derivative_phase=deriv_phase.tolist(),
+        derivative_intensity=deriv_intensity.tolist(),
+        max_phase_sensitivity=max_phase_sens,
+        max_phase_sensitivity_x=max_phase_sens_x,
+        max_intensity_sensitivity=max_intensity_sens,
+        max_intensity_sensitivity_x=max_intensity_sens_x,
+        interrogation_mode=req.interrogation_mode
     )
 
 

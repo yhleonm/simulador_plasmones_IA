@@ -223,6 +223,24 @@ class MonteCarloResponse(BaseModel):
     stats: MonteCarloStats
 
 
+class PhaseSensitivityRequest(SimulationRequest):
+    delta_n: Optional[float] = Field(1e-4, gt=0, le=1e-2)
+
+class PhaseSensitivityResponse(BaseModel):
+    x_grid: List[float]
+    phase_nominal: List[float]
+    phase_perturbed: List[float]
+    reflectance_nominal: List[float]
+    reflectance_perturbed: List[float]
+    derivative_phase: List[float]
+    derivative_intensity: List[float]
+    max_phase_sensitivity: float
+    max_phase_sensitivity_x: float
+    max_intensity_sensitivity: float
+    max_intensity_sensitivity_x: float
+    interrogation_mode: str
+
+
 
 
 

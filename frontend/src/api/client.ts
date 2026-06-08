@@ -4,7 +4,8 @@ import type {
     OptimizationRequest, Simulation2DRequest, Simulation2DResponse, 
     KineticsRequest, KineticsResponse, XAIRequest, XAIResponse,
     CurveFitRequest, CurveFitResponse, ThermalSweepResponse,
-    CalibrationRequest, CalibrationResponse, MonteCarloRequest, MonteCarloResponse
+    CalibrationRequest, CalibrationResponse, MonteCarloRequest, MonteCarloResponse,
+    PhaseSensitivityRequest, PhaseSensitivityResponse
 } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -89,6 +90,12 @@ export const simulateMonteCarlo = async (req: MonteCarloRequest): Promise<MonteC
     const response = await api.post('/simulate/montecarlo', req);
     return response.data;
 };
+
+export const simulatePhaseSensitivity = async (req: PhaseSensitivityRequest): Promise<PhaseSensitivityResponse> => {
+    const response = await api.post('/simulate/phase-sensitivity', req);
+    return response.data;
+};
+
 
 
 

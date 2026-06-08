@@ -229,6 +229,25 @@ export interface MonteCarloResponse {
     stats: MonteCarloStats;
 }
 
+export interface PhaseSensitivityRequest extends SimulationRequest {
+    delta_n?: number;
+}
+
+export interface PhaseSensitivityResponse {
+    x_grid: number[];
+    phase_nominal: number[];
+    phase_perturbed: number[];
+    reflectance_nominal: number[];
+    reflectance_perturbed: number[];
+    derivative_phase: number[];
+    derivative_intensity: number[];
+    max_phase_sensitivity: number;
+    max_phase_sensitivity_x: number;
+    max_intensity_sensitivity: number;
+    max_intensity_sensitivity_x: number;
+    interrogation_mode: 'angular' | 'spectral';
+}
+
 
 
 
