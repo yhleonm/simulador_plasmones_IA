@@ -24,6 +24,7 @@ class SimulationRequest(BaseModel):
     interrogation_mode: Optional[str] = "angular"
     fixed_angle_deg: Optional[float] = 45.0
     temperature_c: Optional[float] = 20.0
+    snr_db: Optional[float] = None
 
 class SimulationWithAngleRequest(SimulationRequest):
     theta_deg: float = Field(..., ge=0, le=90)
@@ -42,6 +43,9 @@ class ReflectanceResponse(BaseModel):
     phase_tm: Optional[List[float]] = None
     phase_te: Optional[List[float]] = None
     phase_diff: Optional[List[float]] = None
+    reflectance_noisy: Optional[List[float]] = None
+    transmittance_noisy: Optional[List[float]] = None
+    phase_diff_noisy: Optional[List[float]] = None
 
 
 
@@ -188,6 +192,35 @@ class CalibrationResponse(BaseModel):
     r_squared: float
     fit_line: List[float]
     interrogation_mode: str
+
+
+class LayerPerturbation(BaseModel):
+    layer_index: int
+    std_d: Optional[float] = 0.0
+    std_n: Optional[float] = 0.0
+    std_k: Optional[float] = 0.0
+
+class MonteCarloRequest(SimulationRequest):
+    runs: int = Field(100, ge=10, le=500)
+    perturbations: List[LayerPerturbation]
+
+class MonteCarloStats(BaseModel):
+    mean: float
+    median: float
+    std: float
+    ci_lower: float
+    ci_upper: float
+    yield_percent: float
+    yield_message: str
+
+class MonteCarloResponse(BaseModel):
+    x_grid: List[float]
+    nominal_curve: List[float]
+    p5_curve: List[float]
+    p95_curve: List[float]
+    sample_curves: List[List[float]]
+    resonance_values: List[float]
+    stats: MonteCarloStats
 
 
 

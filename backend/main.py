@@ -10,7 +10,8 @@ from backend.models.schemas import (
     Simulation2DRequest, Simulation2DResponse, KineticsRequest, 
     KineticsResponse, XAIRequest, XAIResponse, CurveFitRequest, 
     CurveFitResponse, FitParameterConfig, ThermalSweepResponse, 
-    ThermalSweepCurve, CalibrationRequest, CalibrationResponse
+    ThermalSweepCurve, CalibrationRequest, CalibrationResponse,
+    MonteCarloRequest, MonteCarloResponse, MonteCarloStats, LayerPerturbation
 )
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution, minimize
@@ -125,6 +126,21 @@ def classify_sensor_mode(layers: List[dict], wavelength_nm: float, polarization:
         
     return "Dielectrico Simple / No resonante"
 
+def add_gaussian_noise(signal: List[float], snr_db: float, is_phase: bool = False) -> List[float]:
+    if snr_db is None or snr_db <= 0:
+        return None
+    arr = np.array(signal)
+    if is_phase:
+        std = np.pi * (10.0 ** (-snr_db / 20.0))
+        noise = np.random.normal(0, std, size=arr.shape)
+        noisy_arr = arr + noise
+        noisy_arr = np.arctan2(np.sin(noisy_arr), np.cos(noisy_arr))
+    else:
+        std = 10.0 ** (-snr_db / 20.0)
+        noise = np.random.normal(0, std, size=arr.shape)
+        noisy_arr = np.clip(arr + noise, 0.0, 1.0)
+    return noisy_arr.tolist()
+
 @app.post("/api/simulate/reflectance", response_model=ReflectanceResponse)
 def simulate_reflectance(req: SimulationRequest):
     print(f"DEBUG: Received reflectance request for {len(req.layers)} layers")
@@ -145,19 +161,15 @@ def simulate_reflectance(req: SimulationRequest):
                 R_tm, T_tm, r_tm = calculate_tmm(wl, fixed_angle, layers, 'TM', return_coefficient=True, temperature_c=req.temperature_c)
                 R_te, T_te, r_te = calculate_tmm(wl, fixed_angle, layers, 'TE', return_coefficient=True, temperature_c=req.temperature_c)
                 
-                # Reflectance for the selected polarization
                 R = R_tm if req.polarization == 'TM' else R_te
                 R_vals.append(float(R))
                 
-                # Transmittance for the selected polarization
                 T = T_tm if req.polarization == 'TM' else T_te
                 T_vals.append(float(T))
                 
-                # Phase calculation (argument in radians)
                 phi_tm = np.angle(r_tm)
                 phi_te = np.angle(r_te)
                 diff = phi_tm - phi_te
-                # Wrap to [-pi, pi]
                 diff = np.arctan2(np.sin(diff), np.cos(diff))
                 
                 phase_tm.append(float(phi_tm))
@@ -174,6 +186,14 @@ def simulate_reflectance(req: SimulationRequest):
         from backend.core.engine import calculate_fwhm
         fwhm = calculate_fwhm(wls, R_vals, res_wl)
         
+        R_vals_noisy = None
+        T_vals_noisy = None
+        phase_diff_noisy = None
+        if req.snr_db is not None:
+            R_vals_noisy = add_gaussian_noise(R_vals, req.snr_db, is_phase=False)
+            T_vals_noisy = add_gaussian_noise(T_vals, req.snr_db, is_phase=False)
+            phase_diff_noisy = add_gaussian_noise(phase_diff, req.snr_db, is_phase=True)
+        
         return ReflectanceResponse(
             wavelengths=wls.tolist(),
             reflectance=R_vals,
@@ -185,7 +205,10 @@ def simulate_reflectance(req: SimulationRequest):
             sensor_mode=sensor_mode,
             phase_tm=phase_tm,
             phase_te=phase_te,
-            phase_diff=phase_diff
+            phase_diff=phase_diff,
+            reflectance_noisy=R_vals_noisy,
+            transmittance_noisy=T_vals_noisy,
+            phase_diff_noisy=phase_diff_noisy
         )
     else:
         angles = np.linspace(30, 85, 400)
@@ -212,9 +235,16 @@ def simulate_reflectance(req: SimulationRequest):
         res_angle = float(angles[min_idx])
         min_R = float(R_vals[min_idx])
         
-        # Calculate FWHM
         from backend.core.engine import calculate_fwhm
         fwhm = calculate_fwhm(angles, R_vals, res_angle)
+        
+        R_vals_noisy = None
+        T_vals_noisy = None
+        phase_diff_noisy = None
+        if req.snr_db is not None:
+            R_vals_noisy = add_gaussian_noise(R_vals, req.snr_db, is_phase=False)
+            T_vals_noisy = add_gaussian_noise(T_vals, req.snr_db, is_phase=False)
+            phase_diff_noisy = add_gaussian_noise(phase_diff, req.snr_db, is_phase=True)
         
         return ReflectanceResponse(
             angles=angles.tolist(),
@@ -227,7 +257,10 @@ def simulate_reflectance(req: SimulationRequest):
             sensor_mode=sensor_mode,
             phase_tm=phase_tm,
             phase_te=phase_te,
-            phase_diff=phase_diff
+            phase_diff=phase_diff,
+            reflectance_noisy=R_vals_noisy,
+            transmittance_noisy=T_vals_noisy,
+            phase_diff_noisy=phase_diff_noisy
         )
 
 
@@ -1028,6 +1061,135 @@ def simulate_calibration(req: CalibrationRequest):
         r_squared=r_squared,
         fit_line=fit_line,
         interrogation_mode=req.interrogation_mode
+    )
+
+
+@app.post("/api/simulate/montecarlo", response_model=MonteCarloResponse)
+def simulate_montecarlo(req: MonteCarloRequest):
+    nominal_layers = [L.model_dump() for L in req.layers]
+    
+    if req.interrogation_mode == "spectral":
+        x_grid = np.linspace(400, 1000, 200)
+    else:
+        x_grid = np.linspace(30, 85, 300)
+        
+    # 1. Calculate nominal curve
+    if req.interrogation_mode == "spectral":
+        nominal_curve = []
+        for wl in x_grid:
+            R, _ = calculate_tmm(wl, req.fixed_angle_deg or 45.0, nominal_layers, req.polarization, temperature_c=req.temperature_c)
+            nominal_curve.append(float(R))
+    else:
+        R_nom_arr, _ = calculate_tmm(req.wavelength_nm, x_grid, nominal_layers, req.polarization, temperature_c=req.temperature_c)
+        nominal_curve = R_nom_arr.tolist()
+        
+    # 2. Monte Carlo simulation loop
+    trial_curves = []
+    resonance_values = []
+    success_count = 0
+    
+    is_spectral = (req.interrogation_mode == "spectral")
+    max_acceptable_fwhm = 150.0 if is_spectral else 15.0
+    max_acceptable_min_r = 0.35
+    
+    from backend.core.engine import calculate_fwhm
+    
+    for _ in range(req.runs):
+        trial_layers = [L.copy() for L in nominal_layers]
+        
+        # Apply perturbations
+        for pert in req.perturbations:
+            idx = pert.layer_index
+            if idx < 0 or idx >= len(trial_layers):
+                continue
+            if pert.std_d and pert.std_d > 0.0:
+                trial_layers[idx]["d"] = max(0.0, float(np.random.normal(nominal_layers[idx]["d"], pert.std_d)))
+            if pert.std_n and pert.std_n > 0.0:
+                trial_layers[idx]["delta_n"] = float(np.random.normal(0.0, pert.std_n))
+            if pert.std_k and pert.std_k > 0.0:
+                trial_layers[idx]["delta_k"] = float(np.random.normal(0.0, pert.std_k))
+                
+        # Simulate
+        if is_spectral:
+            R_trial = []
+            for wl in x_grid:
+                R, _ = calculate_tmm(wl, req.fixed_angle_deg or 45.0, trial_layers, req.polarization, temperature_c=req.temperature_c)
+                R_trial.append(float(R))
+        else:
+            R_trial_arr, _ = calculate_tmm(req.wavelength_nm, x_grid, trial_layers, req.polarization, temperature_c=req.temperature_c)
+            R_trial = R_trial_arr.tolist()
+            
+        # Analyze resonance
+        min_idx = np.argmin(R_trial)
+        min_r = R_trial[min_idx]
+        
+        # Sub-grid dip interpolation
+        if min_idx == 0 or min_idx == len(R_trial) - 1:
+            res_val = float(x_grid[min_idx])
+        else:
+            x1, x2, x3 = x_grid[min_idx-1], x_grid[min_idx], x_grid[min_idx+1]
+            y1, y2, y3 = R_trial[min_idx-1], R_trial[min_idx], R_trial[min_idx+1]
+            denom = y3 - 2 * y2 + y1
+            if abs(denom) < 1e-9:
+                res_val = float(x2)
+            else:
+                h = x2 - x1
+                res_val = float(x2 - (h / 2.0) * (y3 - y1) / denom)
+                
+        # FWHM
+        fwhm = calculate_fwhm(x_grid, R_trial, res_val)
+        
+        # Check yield criteria
+        is_success = (min_r <= max_acceptable_min_r) and (fwhm > 0) and (fwhm <= max_acceptable_fwhm)
+        if is_success:
+            success_count += 1
+            
+        resonance_values.append(res_val)
+        trial_curves.append(R_trial)
+        
+    # Calculate statistics
+    resonance_values = np.array(resonance_values)
+    mean_val = float(np.mean(resonance_values))
+    median_val = float(np.median(resonance_values))
+    std_val = float(np.std(resonance_values))
+    ci_lower = float(np.percentile(resonance_values, 2.5))
+    ci_upper = float(np.percentile(resonance_values, 97.5))
+    yield_percent = float((success_count / req.runs) * 100.0)
+    
+    if yield_percent >= 95.0:
+        yield_msg = "Excelente tolerancia física. El sensor es altamente estable frente a variaciones de manufactura."
+    elif yield_percent >= 80.0:
+        yield_msg = "Tolerancia física moderada. Se observan derivas leves de resonancia pero mantiene calidad aceptable."
+    else:
+        yield_msg = "Baja tolerancia física. El sensor presenta alta sensibilidad a variaciones de espesor/índice (dip poco definido)."
+        
+    # Compute percentiles for envelope plot
+    trial_curves_arr = np.array(trial_curves)
+    p5_curve = np.percentile(trial_curves_arr, 5, axis=0).tolist()
+    p95_curve = np.percentile(trial_curves_arr, 95, axis=0).tolist()
+    
+    # Pick sample curves
+    sample_indices = np.linspace(0, len(trial_curves)-1, min(15, len(trial_curves)), dtype=int)
+    sample_curves = [trial_curves[idx] for idx in sample_indices]
+    
+    stats = MonteCarloStats(
+        mean=mean_val,
+        median=median_val,
+        std=std_val,
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
+        yield_percent=yield_percent,
+        yield_message=yield_msg
+    )
+    
+    return MonteCarloResponse(
+        x_grid=x_grid.tolist(),
+        nominal_curve=nominal_curve,
+        p5_curve=p5_curve,
+        p95_curve=p95_curve,
+        sample_curves=sample_curves,
+        resonance_values=resonance_values.tolist(),
+        stats=stats
     )
 
 

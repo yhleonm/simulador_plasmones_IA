@@ -27,6 +27,10 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
   const [deltaN, setDeltaN] = useState(0.005);
   const [plotMode, setPlotMode] = useState<'reflectance' | 'transmittance' | 'phase'>('reflectance');
   
+  // Noise state
+  const [showNoise, setShowNoise] = useState(false);
+  const [snrDb, setSnrDb] = useState(40);
+  
   // LoD state
   const isSpectral = interrogationMode === 'spectral';
   const [noise, setNoise] = useState(isSpectral ? 0.05 : 0.001);
@@ -61,7 +65,8 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
         polarization,
         layers,
         interrogation_mode: interrogationMode,
-        fixed_angle_deg: fixedAngle
+        fixed_angle_deg: fixedAngle,
+        snr_db: showNoise ? snrDb : undefined
       });
       setData(baseResult);
       
@@ -84,7 +89,8 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
           polarization,
           layers: perturbedLayers,
           interrogation_mode: interrogationMode,
-          fixed_angle_deg: fixedAngle
+          fixed_angle_deg: fixedAngle,
+          snr_db: showNoise ? snrDb : undefined
         });
         setPerturbedData(pertResult);
       } else {
@@ -129,7 +135,10 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
     transmittanceBase: data.transmittance ? data.transmittance[i] : null,
     transmittancePerturbed: perturbedData?.transmittance ? perturbedData.transmittance[i] : null,
     phaseDiffBase: data.phase_diff ? data.phase_diff[i] : null,
-    phaseDiffPerturbed: perturbedData?.phase_diff ? perturbedData.phase_diff[i] : null
+    phaseDiffPerturbed: perturbedData?.phase_diff ? perturbedData.phase_diff[i] : null,
+    reflectanceNoisy: data.reflectance_noisy ? data.reflectance_noisy[i] : null,
+    transmittanceNoisy: data.transmittance_noisy ? data.transmittance_noisy[i] : null,
+    phaseDiffNoisy: data.phase_diff_noisy ? data.phase_diff_noisy[i] : null
   })) : [];
 
   // Metrics calculation
@@ -218,8 +227,28 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
               onChange={(e) => setBiosensing(e.target.checked)} 
             />
           }
-          label="Superponer Curva con Analito"
+          label="Simular Biosensado"
         />
+        <FormControlLabel
+          control={
+            <Checkbox 
+              checked={showNoise} 
+              onChange={(e) => setShowNoise(e.target.checked)} 
+            />
+          }
+          label="Simular Ruido (SNR)"
+        />
+        {showNoise && (
+          <TextField
+            label="SNR (dB)"
+            type="number"
+            size="small"
+            slotProps={{ htmlInput: { min: 10, max: 80 } }}
+            sx={{ width: 100 }}
+            value={snrDb}
+            onChange={(e) => setSnrDb(Number(e.target.value))}
+          />
+        )}
 
         <TextField
           label="Cambio índice medio (Δn)"
@@ -435,6 +464,16 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                       isAnimationActive={false}
                     />
                   )}
+                  {showNoise && chartData.some(d => d.reflectanceNoisy !== null) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="reflectanceNoisy" 
+                      name="Reflectancia con Ruido"
+                      stroke="transparent" 
+                      dot={{ r: 1.5, fill: "#ff5722" }} 
+                      isAnimationActive={false}
+                    />
+                  )}
                 </>
               )}
               {plotMode === 'transmittance' && (
@@ -460,6 +499,16 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                       isAnimationActive={false}
                     />
                   )}
+                  {showNoise && chartData.some(d => d.transmittanceNoisy !== null) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="transmittanceNoisy" 
+                      name="Transmitancia con Ruido"
+                      stroke="transparent" 
+                      dot={{ r: 1.5, fill: "#757575" }} 
+                      isAnimationActive={false}
+                    />
+                  )}
                 </>
               )}
               {plotMode === 'phase' && (
@@ -482,6 +531,16 @@ const ReflectancePlot: React.FC<Props> = ({ layers, wavelength, polarization, in
                       strokeWidth={2.5} 
                       strokeDasharray="5 5"
                       dot={false} 
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {showNoise && chartData.some(d => d.phaseDiffNoisy !== null) && (
+                    <Line 
+                      type="monotone" 
+                      dataKey="phaseDiffNoisy" 
+                      name="Fase con Ruido"
+                      stroke="transparent" 
+                      dot={{ r: 1.5, fill: "#e040fb" }} 
                       isAnimationActive={false}
                     />
                   )}

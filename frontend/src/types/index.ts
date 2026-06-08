@@ -20,6 +20,7 @@ export interface SimulationRequest {
     interrogation_mode?: 'angular' | 'spectral';
     fixed_angle_deg?: number;
     temperature_c?: number;
+    snr_db?: number;
 }
 
 export interface OptimizationRequest extends SimulationRequest {
@@ -43,6 +44,9 @@ export interface ReflectanceResponse {
     phase_tm?: number[];
     phase_te?: number[];
     phase_diff?: number[];
+    reflectance_noisy?: number[];
+    transmittance_noisy?: number[];
+    phase_diff_noisy?: number[];
 }
 
 
@@ -191,6 +195,38 @@ export interface CalibrationResponse {
     r_squared: number;
     fit_line: number[];
     interrogation_mode: 'angular' | 'spectral';
+}
+
+export interface LayerPerturbation {
+    layer_index: number;
+    std_d?: number;
+    std_n?: number;
+    std_k?: number;
+}
+
+export interface MonteCarloRequest extends SimulationRequest {
+    runs: number;
+    perturbations: LayerPerturbation[];
+}
+
+export interface MonteCarloStats {
+    mean: number;
+    median: number;
+    std: number;
+    ci_lower: number;
+    ci_upper: number;
+    yield_percent: number;
+    yield_message: string;
+}
+
+export interface MonteCarloResponse {
+    x_grid: number[];
+    nominal_curve: number[];
+    p5_curve: number[];
+    p95_curve: number[];
+    sample_curves: number[][];
+    resonance_values: number[];
+    stats: MonteCarloStats;
 }
 
 

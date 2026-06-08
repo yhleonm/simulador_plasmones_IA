@@ -13,6 +13,7 @@ import XAIPanel from './components/XAIPanel';
 import CurveFittingPanel from './components/CurveFittingPanel';
 import ThermalAnalysisPanel from './components/ThermalAnalysisPanel';
 import CalibrationCurvePanel from './components/CalibrationCurvePanel';
+import MonteCarloPanel from './components/MonteCarloPanel';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -318,6 +319,7 @@ export default function App() {
             <Tab label="Ajuste de Curvas / Solver Inverso" />
             <Tab label="Análisis Termo-Óptico" />
             <Tab label="Curva de Calibración" />
+            <Tab label="Ruido y Monte Carlo" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -381,6 +383,15 @@ export default function App() {
             )}
             {tabValue === 7 && (
               <CalibrationCurvePanel 
+                layers={layers}
+                wavelength={wavelength}
+                polarization={polarization}
+                interrogationMode={interrogationMode}
+                fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 8 && (
+              <MonteCarloPanel 
                 layers={layers}
                 wavelength={wavelength}
                 polarization={polarization}

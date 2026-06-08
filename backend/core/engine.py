@@ -239,8 +239,15 @@ def get_refractive_index(layer_info, wavelength_nm, temperature_c=20.0):
         
     delta_t = float(temperature_c) - 20.0
     if delta_t != 0.0 and dn_dt != 0.0:
-        return (n_base.real + dn_dt * delta_t) + 1j * n_base.imag
-    return n_base
+        n_resolved = (n_base.real + dn_dt * delta_t) + 1j * n_base.imag
+    else:
+        n_resolved = n_base
+        
+    delta_n = float(layer_info.get("delta_n", 0.0) or 0.0)
+    delta_k = float(layer_info.get("delta_k", 0.0) or 0.0)
+    if delta_n != 0.0 or delta_k != 0.0:
+        return (n_resolved.real + delta_n) + 1j * (n_resolved.imag + delta_k)
+    return n_resolved
 
 def _get_refractive_index_base(layer_info, wavelength_nm, temperature_c=20.0):
     """Lógica base para resolver n + ik a 20°C (con recursión para medios efectivos)."""

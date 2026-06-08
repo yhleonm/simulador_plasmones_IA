@@ -4,7 +4,7 @@ import type {
     OptimizationRequest, Simulation2DRequest, Simulation2DResponse, 
     KineticsRequest, KineticsResponse, XAIRequest, XAIResponse,
     CurveFitRequest, CurveFitResponse, ThermalSweepResponse,
-    CalibrationRequest, CalibrationResponse
+    CalibrationRequest, CalibrationResponse, MonteCarloRequest, MonteCarloResponse
 } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -82,6 +82,11 @@ export const simulateThermalSweep = async (req: SimulationRequest): Promise<Ther
 
 export const simulateCalibration = async (req: CalibrationRequest): Promise<CalibrationResponse> => {
     const response = await api.post('/simulate/calibration', req);
+    return response.data;
+};
+
+export const simulateMonteCarlo = async (req: MonteCarloRequest): Promise<MonteCarloResponse> => {
+    const response = await api.post('/simulate/montecarlo', req);
     return response.data;
 };
 
