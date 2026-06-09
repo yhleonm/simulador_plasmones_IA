@@ -248,7 +248,22 @@ export interface PhaseSensitivityResponse {
     interrogation_mode: 'angular' | 'spectral';
 }
 
+export interface LRSPPSweepRequest {
+    layers: LayerConfig[];
+    wavelength_nm: number;
+    polarization: 'TM' | 'TE';
+    temperature_c?: number;
+    sweep_type: 'metal_thickness' | 'buffer_index';
+    metal_layer_index?: number;
+    buffer_layer_index?: number;
+}
 
-
-
-
+export interface LRSPPSweepResponse {
+    sweep_values: number[];
+    propagation_lengths: number[];
+    penetration_depths: number[];
+    resonance_angles: number[];
+    fwhm_values: number[];
+    is_lrspp: boolean[];
+    message: string;
+}

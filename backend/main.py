@@ -12,7 +12,8 @@ from backend.models.schemas import (
     CurveFitResponse, FitParameterConfig, ThermalSweepResponse, 
     ThermalSweepCurve, CalibrationRequest, CalibrationResponse,
     MonteCarloRequest, MonteCarloResponse, MonteCarloStats, LayerPerturbation,
-    PhaseSensitivityRequest, PhaseSensitivityResponse
+    PhaseSensitivityRequest, PhaseSensitivityResponse,
+    LRSPPSweepRequest, LRSPPSweepResponse
 )
 from backend.core.engine import calculate_tmm, calculate_field_profile, get_available_materials, parse_refractive_index_csv, DB_PATH, get_refractive_index
 from scipy.optimize import differential_evolution, minimize
@@ -1299,7 +1300,149 @@ def simulate_phase_sensitivity(req: PhaseSensitivityRequest):
     )
 
 
+@app.post("/api/lrspp/sweep", response_model=LRSPPSweepResponse)
+def lrspp_sweep(req: LRSPPSweepRequest):
+    wl = req.wavelength_nm
+    polarization = req.polarization
+    temp_c = req.temperature_c
+    
+    # 1. Identificar capa metálica si no está especificada
+    layers_base = [L.model_dump() for L in req.layers]
+    metal_idx = req.metal_layer_index
+    if metal_idx is None or metal_idx < 0:
+        for i in range(1, len(layers_base) - 1):
+            n_c = get_refractive_index(layers_base[i], wl, temp_c)
+            eps_c = n_c ** 2
+            if eps_c.real < 0:
+                metal_idx = i
+                break
+    
+    if metal_idx is None or metal_idx < 0 or metal_idx >= len(layers_base) - 1:
+        raise HTTPException(status_code=400, detail="No se encontró una capa metálica en las capas intermedias para el análisis de plasmones.")
+    
+    # 2. Identificar capa buffer si no está especificada
+    buffer_idx = req.buffer_layer_index
+    if buffer_idx is None or buffer_idx < 0:
+        buffer_idx = metal_idx - 1
+        
+    if buffer_idx < 0 or buffer_idx >= len(layers_base):
+        raise HTTPException(status_code=400, detail="Índice de capa buffer inválido.")
+
+    # 3. Definir rango de barrido
+    sweep_values = []
+    if req.sweep_type == "metal_thickness":
+        # Barrido de espesor metálico de 5 nm a 80 nm con 40 puntos
+        sweep_values = np.linspace(5.0, 80.0, 40).tolist()
+    elif req.sweep_type == "buffer_index":
+        # Barrido de índice de refracción del buffer alrededor del índice del analito
+        n_analito = get_refractive_index(layers_base[-1], wl, temp_c).real
+        sweep_values = np.linspace(n_analito - 0.05, n_analito + 0.05, 40).tolist()
+    else:
+        raise HTTPException(status_code=400, detail=f"Tipo de barrido '{req.sweep_type}' no soportado.")
+
+    propagation_lengths = []
+    penetration_depths = []
+    resonance_angles = []
+    fwhm_values = []
+    is_lrspp = []
+    
+    angles = np.linspace(30.0, 89.5, 2000)
+    
+    for val in sweep_values:
+        layers_temp = [L.copy() for L in layers_base]
+        
+        if req.sweep_type == "metal_thickness":
+            layers_temp[metal_idx]['d'] = val
+        elif req.sweep_type == "buffer_index":
+            layers_temp[buffer_idx]['material'] = 'Personalizado (Manual)'
+            layers_temp[buffer_idx]['custom_n'] = val
+            layers_temp[buffer_idx]['custom_k'] = 0.0
+            
+        reflectance = calculate_tmm(wl, angles, layers_temp, polarization, temperature_c=temp_c)[0]
+        
+        min_idx = np.argmin(reflectance)
+        theta_res = angles[min_idx]
+        R_min = reflectance[min_idx]
+        
+        if R_min < 0.95 and 5 < min_idx < len(angles) - 5:
+            from backend.core.engine import calculate_fwhm
+            fwhm_deg = calculate_fwhm(angles, reflectance, theta_res)
+            
+            if fwhm_deg > 0:
+                fwhm_rad = np.radians(fwhm_deg)
+                n_prisma = get_refractive_index(layers_temp[0], wl, temp_c).real
+                cos_theta = np.cos(np.radians(theta_res))
+                
+                l_prop = wl / (np.pi * n_prisma * cos_theta * fwhm_rad)
+                l_prop_um = l_prop / 1000.0
+                
+                n_a = get_refractive_index(layers_temp[-1], wl, temp_c)
+                eps_a = n_a ** 2
+                term = eps_a - (n_prisma * np.sin(np.radians(theta_res))) ** 2
+                im_part = np.abs(np.imag(np.lib.scimath.sqrt(term)))
+                
+                if im_part > 1e-9:
+                    l_pen = wl / (2 * np.pi * im_part)
+                else:
+                    l_pen = 0.0
+                    
+                n_b = get_refractive_index(layers_temp[buffer_idx], wl, temp_c).real
+                n_analito = get_refractive_index(layers_temp[-1], wl, temp_c).real
+                simetria_optica = abs(n_b - n_analito) < 0.02
+                espesor_delgado = layers_temp[metal_idx]['d'] < 25.0
+                
+                is_lrspp_point = simetria_optica and espesor_delgado and (l_prop_um > 25.0)
+                
+                propagation_lengths.append(float(l_prop_um))
+                penetration_depths.append(float(l_pen))
+                resonance_angles.append(float(theta_res))
+                fwhm_values.append(float(fwhm_deg))
+                is_lrspp.append(bool(is_lrspp_point))
+                continue
+                
+        propagation_lengths.append(0.0)
+        penetration_depths.append(0.0)
+        resonance_angles.append(0.0)
+        fwhm_values.append(0.0)
+        is_lrspp.append(False)
+        
+    if req.sweep_type == "metal_thickness":
+        max_idx = np.argmax(propagation_lengths)
+        max_val = sweep_values[max_idx]
+        max_len = propagation_lengths[max_idx]
+        
+        n_b = get_refractive_index(layers_base[buffer_idx], wl, temp_c).real
+        n_analito = get_refractive_index(layers_base[-1], wl, temp_c).real
+        simetria = abs(n_b - n_analito) < 0.02
+        
+        if max_len > 25.0 and simetria:
+            msg = f"¡LRSPP detectado con éxito! Longitud de propagación máxima de {max_len:.1f} µm a un espesor metálico de {max_val:.1f} nm. " \
+                  f"Esto es posible gracias a la simetría óptica entre el buffer (n={n_b:.3f}) y el analito (n={n_analito:.3f})."
+        else:
+            msg = f"Longitud de propagación máxima de {max_len:.1f} µm a un espesor de {max_val:.1f} nm. " \
+                  f"Para habilitar modos LRSPP de muy bajas pérdidas, asegúrese de que el buffer y el analito tengan índices muy similares " \
+                  f"(Diferencia actual: {abs(n_b - n_analito):.3f}) y el metal sea delgado (< 20 nm)."
+    else:
+        max_idx = np.argmax(propagation_lengths)
+        max_val = sweep_values[max_idx]
+        max_len = propagation_lengths[max_idx]
+        
+        n_analito = get_refractive_index(layers_base[-1], wl, temp_c).real
+        msg = f"La longitud de propagación máxima es de {max_len:.1f} µm cuando el índice del buffer es {max_val:.3f}. " \
+              f"Observe cómo la longitud de propagación cae bruscamente al alejarse del índice del analito (n={n_analito:.3f}), " \
+              f"confirmando que el plasmón de rango largo requiere simetría óptica para existir."
+              
+    return LRSPPSweepResponse(
+        sweep_values=sweep_values,
+        propagation_lengths=propagation_lengths,
+        penetration_depths=penetration_depths,
+        resonance_angles=resonance_angles,
+        fwhm_values=fwhm_values,
+        is_lrspp=is_lrspp,
+        message=msg
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

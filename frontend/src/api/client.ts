@@ -5,7 +5,8 @@ import type {
     KineticsRequest, KineticsResponse, XAIRequest, XAIResponse,
     CurveFitRequest, CurveFitResponse, ThermalSweepResponse,
     CalibrationRequest, CalibrationResponse, MonteCarloRequest, MonteCarloResponse,
-    PhaseSensitivityRequest, PhaseSensitivityResponse
+    PhaseSensitivityRequest, PhaseSensitivityResponse,
+    LRSPPSweepRequest, LRSPPSweepResponse
 } from '../types';
 
 let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -96,8 +97,7 @@ export const simulatePhaseSensitivity = async (req: PhaseSensitivityRequest): Pr
     return response.data;
 };
 
-
-
-
-
-
+export const simulateLRSPPSweep = async (req: LRSPPSweepRequest): Promise<LRSPPSweepResponse> => {
+    const response = await api.post('/lrspp/sweep', req);
+    return response.data;
+};

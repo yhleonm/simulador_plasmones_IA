@@ -15,6 +15,7 @@ import ThermalAnalysisPanel from './components/ThermalAnalysisPanel';
 import CalibrationCurvePanel from './components/CalibrationCurvePanel';
 import MonteCarloPanel from './components/MonteCarloPanel';
 import PhaseSensitivityPanel from './components/PhaseSensitivityPanel';
+import LRSPPPanel from './components/LRSPPPanel';
 import type { LayerConfig } from './types';
 import { getMaterials } from './api/client';
 import type { MaterialInfo } from './api/client';
@@ -322,6 +323,7 @@ export default function App() {
             <Tab label="Curva de Calibración" />
             <Tab label="Ruido y Monte Carlo" />
             <Tab label="Sensibilidad de Fase" />
+            <Tab label="Plasmón de Rango Largo (LRSPP)" />
           </Tabs>
           <Box sx={{ p: 3 }}>
             {tabValue === 0 && (
@@ -408,6 +410,13 @@ export default function App() {
                 polarization={polarization}
                 interrogationMode={interrogationMode}
                 fixedAngle={fixedAngle}
+              />
+            )}
+            {tabValue === 10 && (
+              <LRSPPPanel 
+                layers={layers}
+                wavelength={wavelength}
+                polarization={polarization}
               />
             )}
           </Box>

@@ -241,7 +241,22 @@ class PhaseSensitivityResponse(BaseModel):
     interrogation_mode: str
 
 
+class LRSPPSweepRequest(BaseModel):
+    layers: List[LayerConfig]
+    wavelength_nm: float = Field(633.0, gt=0)
+    polarization: str = Field("TM", pattern="^(TM|TE)$")
+    temperature_c: Optional[float] = 20.0
+    sweep_type: str = Field("metal_thickness", pattern="^(metal_thickness|buffer_index)$")
+    metal_layer_index: Optional[int] = -1
+    buffer_layer_index: Optional[int] = -1
 
-
+class LRSPPSweepResponse(BaseModel):
+    sweep_values: List[float]
+    propagation_lengths: List[float]
+    penetration_depths: List[float]
+    resonance_angles: List[float]
+    fwhm_values: List[float]
+    is_lrspp: List[bool]
+    message: str
 
 
