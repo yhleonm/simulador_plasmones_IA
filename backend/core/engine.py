@@ -437,26 +437,40 @@ def calculate_fwhm(angles, reflectance, res_angle):
     # Encontrar el valor base (fuera de la resonancia)
     base_R = np.max(reflectance)
     min_R = np.min(reflectance)
-    half_depth = min_R + (base_R - min_R) / 2
     
     # Buscar cruces por el nivel medio
     try:
         # Encontrar los índices donde R cruza half_depth
         idx_res = np.argmin(reflectance)
         
-        # Lado izquierdo
-        left_idx = np.where(reflectance[:idx_res] > half_depth)[0]
-        if len(left_idx) == 0: return 0
-        left_angle = angles[left_idx[-1]]
+        left_curve = reflectance[:idx_res]
+        right_curve = reflectance[idx_res:]
         
-        # Lado derecho
-        right_idx = np.where(reflectance[idx_res:] > half_depth)[0]
-        if len(right_idx) == 0: return 0
+        # Umbrales independientes para cada lado para soportar asimetrías y límites de barrido (ej. espectral)
+        max_left = np.max(left_curve) if len(left_curve) > 0 else base_R
+        left_half = min_R + (max_left - min_R) / 2.0
+        
+        max_right = np.max(right_curve) if len(right_curve) > 0 else base_R
+        right_half = min_R + (max_right - min_R) / 2.0
+        
+        # Buscar cruces por el nivel medio en cada lado
+        left_idx = np.where(left_curve > left_half)[0]
+        right_idx = np.where(right_curve > right_half)[0]
+        
+        # Caída de respaldo a umbral global si alguno de los lados no cruza
+        if len(left_idx) == 0 or len(right_idx) == 0:
+            half_depth = min_R + (base_R - min_R) / 2.0
+            left_idx = np.where(left_curve > half_depth)[0]
+            right_idx = np.where(right_curve > half_depth)[0]
+            if len(left_idx) == 0 or len(right_idx) == 0:
+                return 0.0
+                
+        left_angle = angles[left_idx[-1]]
         right_angle = angles[idx_res + right_idx[0]]
         
         return abs(right_angle - left_angle)
     except:
-        return 0
+        return 0.0
 
 def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM', return_complex=False, temperature_c=20.0):
     """Calcula la intensidad del campo eléctrico total (|E|^2) a través de las capas con ajuste térmico."""
