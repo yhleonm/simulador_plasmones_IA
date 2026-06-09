@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Label
 } from 'recharts';
 import { 
   Box, Button, CircularProgress, Typography, Paper, Stack, Divider, 
@@ -207,43 +207,39 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
             </Box>
           ) : chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+              <LineChart data={chartData} margin={{ top: 20, right: 55, left: 45, bottom: 25 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis 
                   dataKey="value" 
                   type="number"
                   domain={['auto', 'auto']}
-                  label={{ 
-                    value: sweepType === 'metal_thickness' ? 'Espesor Metálico (nm)' : 'Índice de Refracción del Buffer (n)', 
-                    position: 'insideBottom', 
-                    offset: -10, 
-                    fontSize: 12,
-                    fontWeight: 'bold'
-                  }} 
-                />
-                <YAxis 
-                  yAxisId="left"
-                  label={{ 
-                    value: 'Longitud de Propagación L_prop (µm)', 
-                    angle: -90, 
-                    position: 'insideLeft', 
-                    offset: 15,
-                    fontSize: 12,
-                    fontWeight: 'bold'
-                  }} 
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  label={{ 
-                    value: 'Profundidad de Penetración L_pen (nm)', 
-                    angle: 90, 
-                    position: 'insideRight', 
-                    offset: 15,
-                    fontSize: 12,
-                    fontWeight: 'bold'
-                  }} 
-                />
+                  tick={{ fontSize: 10 }}
+                >
+                  <Label 
+                    value={sweepType === 'metal_thickness' ? 'Espesor Metálico (nm)' : 'Índice de Refracción del Buffer (n)'} 
+                    offset={-12} 
+                    position="insideBottom"
+                    style={{ textAnchor: 'middle', fontSize: 12, fontWeight: 'bold', fill: '#555' }}
+                  />
+                </XAxis>
+                <YAxis yAxisId="left" tick={{ fontSize: 10 }}>
+                  <Label 
+                    value="Longitud de Propagación L_prop (µm)" 
+                    angle={-90} 
+                    position="left" 
+                    offset={15}
+                    style={{ textAnchor: 'middle', fontSize: 12, fontWeight: 'bold', fill: '#2e7d32' }} 
+                  />
+                </YAxis>
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }}>
+                  <Label 
+                    value="Profundidad de Penetración L_pen (nm)" 
+                    angle={90} 
+                    position="right" 
+                    offset={15}
+                    style={{ textAnchor: 'middle', fontSize: 12, fontWeight: 'bold', fill: '#9c27b0' }} 
+                  />
+                </YAxis>
                 <Tooltip 
                   formatter={(value: any, name: any) => {
                     if (name === "L_prop") return [`${Number(value).toFixed(2)} µm`, "Longitud de Propagación"] as any;

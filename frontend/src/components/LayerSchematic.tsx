@@ -51,7 +51,7 @@ const LayerSchematic: React.FC<Props> = ({ layers }) => {
   const thinFilms = layers.slice(1, -1);
   const totalThinThickness = thinFilms.reduce((acc, curr) => acc + (curr.material === 'Grafeno' ? (curr.custom_layers || 1) * 0.34 : curr.d), 0);
 
-  let currentY = sensingHeight;
+  let currentY = height - prismHeight;
 
   const renderedLayers = layers.map((layer, index) => {
     let y = 0;
@@ -72,7 +72,7 @@ const LayerSchematic: React.FC<Props> = ({ layers }) => {
       isInfinite = true;
       label += " (Sensing)";
     } else {
-      // Thin films in between
+      // Thin films in between (apilados de abajo hacia arriba desde el prisma)
       const thickness = layer.material === 'Grafeno' 
         ? (layer.custom_layers || 1) * 0.34 
         : layer.d;
@@ -80,8 +80,9 @@ const LayerSchematic: React.FC<Props> = ({ layers }) => {
       // Give each thin film a proportional size, but minimum 15px so it is visible
       const weight = totalThinThickness > 0 ? thickness / totalThinThickness : 1;
       h = Math.max(15, weight * availableHeight);
+      
+      currentY -= h;
       y = currentY;
-      currentY += h;
       label += ` (${thickness.toFixed(1)} nm)`;
     }
 

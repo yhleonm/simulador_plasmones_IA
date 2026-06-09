@@ -1331,10 +1331,8 @@ def lrspp_sweep(req: LRSPPSweepRequest):
     # 3. Definir rango de barrido
     sweep_values = []
     if req.sweep_type == "metal_thickness":
-        # Barrido de espesor metálico de 5 nm a 80 nm con 40 puntos
         sweep_values = np.linspace(5.0, 80.0, 40).tolist()
     elif req.sweep_type == "buffer_index":
-        # Barrido de índice de refracción del buffer alrededor del índice del analito
         n_analito = get_refractive_index(layers_base[-1], wl, temp_c).real
         sweep_values = np.linspace(n_analito - 0.05, n_analito + 0.05, 40).tolist()
     else:
@@ -1346,8 +1344,6 @@ def lrspp_sweep(req: LRSPPSweepRequest):
     fwhm_values = []
     is_lrspp = []
     
-    angles = np.linspace(30.0, 89.5, 2000)
-    
     for val in sweep_values:
         layers_temp = [L.copy() for L in layers_base]
         
@@ -1358,15 +1354,36 @@ def lrspp_sweep(req: LRSPPSweepRequest):
             layers_temp[buffer_idx]['custom_n'] = val
             layers_temp[buffer_idx]['custom_k'] = 0.0
             
-        reflectance = calculate_tmm(wl, angles, layers_temp, polarization, temperature_c=temp_c)[0]
+        # Paso 1: Búsqueda gruesa para localizar la zona del dip (300 puntos de 30° a 89.5°)
+        angles_coarse = np.linspace(30.0, 89.5, 300)
+        R_coarse = calculate_tmm(wl, angles_coarse, layers_temp, polarization, temperature_c=temp_c)[0]
+        min_idx_coarse = np.argmin(R_coarse)
+        theta_approx = angles_coarse[min_idx_coarse]
+        R_min_approx = R_coarse[min_idx_coarse]
         
-        min_idx = np.argmin(reflectance)
-        theta_res = angles[min_idx]
-        R_min = reflectance[min_idx]
-        
-        if R_min < 0.95 and 5 < min_idx < len(angles) - 5:
+        # Paso 2: Zoom local alrededor del dip candidato para capturar resonancias ultra-delgadas
+        # (1200 puntos en un micro-rango de +-1.0° para resolución angular extrema de ~0.0016°)
+        if R_min_approx < 0.99 and 2 < min_idx_coarse < len(angles_coarse) - 3:
+            angles_fine = np.linspace(max(30.0, theta_approx - 1.0), min(89.5, theta_approx + 1.0), 1200)
+            reflectance = calculate_tmm(wl, angles_fine, layers_temp, polarization, temperature_c=temp_c)[0]
+            
+            min_idx = np.argmin(reflectance)
+            theta_res = angles_fine[min_idx]
+            R_min = reflectance[min_idx]
+            
+            angles_eval = angles_fine
+            reflectance_eval = reflectance
+        else:
+            angles_eval = angles_coarse
+            reflectance_eval = R_coarse
+            theta_res = theta_approx
+            R_min = R_min_approx
+            min_idx = min_idx_coarse
+            
+        # Consideramos dip válido si R_min es menor a 0.98 y no está en los extremos del escaneo
+        if R_min < 0.98 and 5 < min_idx < len(angles_eval) - 5:
             from backend.core.engine import calculate_fwhm
-            fwhm_deg = calculate_fwhm(angles, reflectance, theta_res)
+            fwhm_deg = calculate_fwhm(angles_eval, reflectance_eval, theta_res)
             
             if fwhm_deg > 0:
                 fwhm_rad = np.radians(fwhm_deg)
@@ -1391,6 +1408,7 @@ def lrspp_sweep(req: LRSPPSweepRequest):
                 simetria_optica = abs(n_b - n_analito) < 0.02
                 espesor_delgado = layers_temp[metal_idx]['d'] < 25.0
                 
+                # Califica como LRSPP si hay simetría, metal delgado y la longitud es alta
                 is_lrspp_point = simetria_optica and espesor_delgado and (l_prop_um > 25.0)
                 
                 propagation_lengths.append(float(l_prop_um))
