@@ -106,7 +106,7 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
       {/* Tarjetas de Métricas Físicas */}
       {data && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Card variant="outlined" sx={{ borderLeft: '5px solid #2e7d32', height: '100%' }}>
               <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                 <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>
@@ -122,7 +122,7 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
             </Card>
           </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Card variant="outlined" sx={{ borderLeft: '5px solid #1976d2', height: '100%' }}>
               <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                 <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>
@@ -140,7 +140,7 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
             </Card>
           </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Card variant="outlined" sx={{ borderLeft: '5px solid #9c27b0', height: '100%' }}>
               <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                 <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>
@@ -156,7 +156,7 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
             </Card>
           </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <Card variant="outlined" sx={{ borderLeft: `5px solid ${hasActiveLRSPP ? '#ed6c02' : '#757575'}`, height: '100%' }}>
               <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                 <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 'bold', display: 'block', textTransform: 'uppercase' }}>
@@ -245,10 +245,10 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
                   }} 
                 />
                 <Tooltip 
-                  formatter={(value: any, name: string) => {
-                    if (name === "L_prop") return [`${Number(value).toFixed(2)} µm`, "Longitud de Propagación"];
-                    if (name === "L_pen") return [`${Number(value).toFixed(1)} nm`, "Profundidad de Penetración"];
-                    return [value, name];
+                  formatter={(value: any, name: any) => {
+                    if (name === "L_prop") return [`${Number(value).toFixed(2)} µm`, "Longitud de Propagación"] as any;
+                    if (name === "L_pen") return [`${Number(value).toFixed(1)} nm`, "Profundidad de Penetración"] as any;
+                    return [value, name] as any;
                   }}
                   labelFormatter={(label: any) => 
                     sweepType === 'metal_thickness' 
@@ -293,19 +293,19 @@ const LRSPPPanel: React.FC<Props> = ({ layers, wavelength, polarization }) => {
           <InfoIcon /> Fundamento de Física Óptica: LRSPP
         </Typography>
         
-        <Typography variant="body2" color="textPrimary" paragraph>
+        <Typography variant="body2" color="text.primary" component="p" sx={{ mb: 2 }}>
           Cuando una película metálica extremadamente delgada está rodeada por ambos lados por dieléctricos de índice de refracción muy similar, los plasmones de superficie (SPP) de la interfaz superior y la inferior interactúan fuertemente.
         </Typography>
 
-        <Typography variant="body2" color="textPrimary" paragraph>
+        <Typography variant="body2" color="text.primary" component="p" sx={{ mb: 2 }}>
           Esta interacción acopla las ondas y da lugar a dos modos propios súper-impuestos:
         </Typography>
 
         <Box sx={{ pl: 2, borderLeft: '3px solid #e0e0e0', mb: 2 }}>
-          <Typography variant="body2" paragraph>
+          <Typography variant="body2" component="p" sx={{ mb: 2 }}>
             <strong>1. Modo Simétrico (LRSPP - Long-Range Surface Plasmon):</strong> La distribución del campo eléctrico transversal es simétrica, lo que empuja el campo electromagnético hacia afuera del metal, reduciendo drásticamente la disipación óhmica (pérdidas). Como resultado, la longitud de propagación lateral explota (pudiendo pasar de 10 µm a más de 500 µm) y la profundidad de penetración en el analito crece de forma ultra-profunda.
           </Typography>
-          <Typography variant="body2">
+          <Typography variant="body2" component="p">
             <strong>2. Modo Antisimétrico (SRSPP - Short-Range Surface Plasmon):</strong> La distribución del campo es antisimétrica, lo que concentra el campo dentro del metal delgado, incrementando enormemente la atenuación óhmica y reduciendo su longitud de propagación a fracciones de micrómetro.
           </Typography>
         </Box>
