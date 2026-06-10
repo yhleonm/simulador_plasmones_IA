@@ -94,6 +94,13 @@ def get_material_display_name(filename):
     }
     if filename in mapping:
         return mapping[filename]
+    if filename.startswith("online_"):
+        parts = filename[:-4].split("_")
+        if len(parts) >= 4:
+            shelf = parts[1]
+            book = parts[2]
+            page = "_".join(parts[3:])
+            return f"{book} ({page}) [Online]"
     name_without_ext = os.path.splitext(filename)[0]
     return name_without_ext.replace("_", " ")
 
@@ -573,3 +580,325 @@ def calculate_field_profile(wavelength_nm, theta_deg, layers, pol='TM', return_c
     if return_complex:
         return np.array(z_points), np.array(E_sq), np.array(E_complex)
     return np.array(z_points), np.array(E_sq)
+
+
+# ==========================================
+# CONECTOR ONLINE CON REFRACTIVEINDEX.INFO
+# ==========================================
+
+def _evaluate_dispersion_formula(formula_id: int, coefficients: list, wl_um: np.ndarray):
+    """Computa el índice de refracción 'n' a partir de una fórmula de dispersión."""
+    wl = np.asarray(wl_um, dtype=float)
+    # Rellenar con ceros para evitar errores de índice
+    C = list(coefficients) + [0.0] * 20
+    
+    if formula_id == 1:  # Sellmeier
+        nsq = 1 + C[0]
+        for i in range(1, len(coefficients), 2):
+            nsq = nsq + C[i] * wl**2 / (wl**2 - C[i+1]**2)
+        return np.sqrt(nsq)
+        
+    elif formula_id == 2:  # Sellmeier-2
+        nsq = 1 + C[0]
+        for i in range(1, len(coefficients), 2):
+            nsq = nsq + C[i] * wl**2 / (wl**2 - C[i+1])
+        return np.sqrt(nsq)
+        
+    elif formula_id == 3:  # Polynomial
+        nsq = C[0]
+        for i in range(1, len(coefficients), 2):
+            nsq = nsq + C[i] * wl**C[i+1]
+        return np.sqrt(nsq)
+        
+    elif formula_id == 4:  # RefractiveIndex.INFO
+        nsq = C[0]
+        for i in range(1, min(8, len(coefficients)), 4):
+            nsq = nsq + C[i] * wl**C[i+1] / (wl**2 - C[i+2]**C[i+3])
+        if len(coefficients) > 9:
+            for i in range(9, len(coefficients), 2):
+                nsq = nsq + C[i] * wl**C[i+1]
+        return np.sqrt(nsq)
+        
+    elif formula_id == 5:  # Cauchy
+        n = C[0]
+        for i in range(1, len(coefficients), 2):
+            n = n + C[i] * wl**C[i+1]
+        return n
+        
+    elif formula_id == 6:  # Gases
+        n = 1 + C[0]
+        for i in range(1, len(coefficients), 2):
+            n = n + C[i] / (C[i+1] - wl**(-2))
+        return n
+        
+    elif formula_id == 7:  # Herzberger
+        n = C[0] + C[1]/(wl**2 - 0.028) + C[2]/(wl**2 - 0.028)**2
+        for i in range(3, len(coefficients)):
+            n = n + C[i] * wl**(2 * (i - 2))
+        return n
+        
+    elif formula_id == 8:  # Retro
+        tmp = C[0] + C[1]*wl**2/(wl**2 - C[2]) + C[3]*wl**2
+        return np.sqrt((2*tmp + 1)/(1 - tmp))
+        
+    elif formula_id == 9:  # Exotic
+        return np.sqrt(C[0] + C[1]/(wl**2 - C[2]) + C[3]*(wl - C[4])/((wl - C[4])**2 + C[5]))
+        
+    else:
+        raise ValueError(f"Fórmula tipo {formula_id} no soportada.")
+
+def _parse_tabulated_block(data_str: str):
+    rows = data_str.strip().split('\n')
+    wls, col1, col2 = [], [], []
+    for r in rows:
+        parts = [p.strip() for p in r.replace(';', ',').replace('\t', ',').split(',') if p.strip()]
+        if not parts or parts[0].startswith('#'):
+            continue
+        try:
+            if len(parts) == 1:
+                parts = parts[0].split()
+            if len(parts) >= 2:
+                wls.append(float(parts[0]))
+                col1.append(float(parts[1]))
+                if len(parts) >= 3:
+                    col2.append(float(parts[2]))
+                else:
+                    col2.append(0.0)
+        except ValueError:
+            pass
+    return np.array(wls), np.array(col1), np.array(col2)
+
+def import_material_from_url(url: str):
+    """Descarga un archivo YAML desde refractiveindex.info resolviendo la ruta con catalog-nk, y lo guarda como CSV."""
+    import urllib.parse
+    import urllib.request
+    import yaml
+    import re
+    
+    # 1. Parsear la URL
+    parsed = urllib.parse.urlparse(url)
+    params = urllib.parse.parse_qs(parsed.query)
+    
+    shelf_q = params.get('shelf', [None])[0]
+    book_q = params.get('book', [None])[0]
+    page_q = params.get('page', [None])[0]
+    
+    if not shelf_q or not book_q or not page_q:
+        raise ValueError("La URL debe contener los parámetros 'shelf', 'book' y 'page'.")
+        
+    # Sanitizar nombres de consulta
+    shelf_q = shelf_q.strip()
+    book_q = book_q.strip()
+    page_q = page_q.strip()
+    
+    # 2. Cargar el catálogo y resolver la ruta relativa
+    records = _get_catalog_records()
+    
+    relative_path = None
+    # Intento 1: Coincidencia exacta insensible a mayúsculas
+    for r in records:
+        if (r['shelf'].lower() == shelf_q.lower() and 
+            r['book'].lower() == book_q.lower() and 
+            r['page'].lower() == page_q.lower()):
+            relative_path = r['path']
+            break
+            
+    # Intento 2: Coincidencia fuzzy en book y shelf (page exacta)
+    if not relative_path:
+        candidates = []
+        for r in records:
+            if r['page'].lower() != page_q.lower():
+                continue
+            score = 0
+            if book_q.lower() in r['book'].lower() or r['book'].lower() in book_q.lower():
+                score += 10
+            if shelf_q.lower() in r['shelf'].lower() or r['shelf'].lower() in shelf_q.lower():
+                score += 5
+            candidates.append((score, r['path']))
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            relative_path = candidates[0][1]
+            
+    # Intento 3: Coincidencia fuzzy en page
+    if not relative_path:
+        candidates = []
+        for r in records:
+            if page_q.lower() in r['page'].lower() or r['page'].lower() in page_q.lower():
+                score = 0
+                if book_q.lower() in r['book'].lower() or r['book'].lower() in book_q.lower():
+                    score += 10
+                if shelf_q.lower() in r['shelf'].lower() or r['shelf'].lower() in shelf_q.lower():
+                    score += 5
+                candidates.append((score, r['path']))
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            relative_path = candidates[0][1]
+            
+    if not relative_path:
+        raise ValueError(f"No se pudo encontrar ningún material en el catálogo para la combinación: Shelf={shelf_q}, Book={book_q}, Page={page_q}")
+        
+    # 3. Descargar el archivo YAML de GitHub raw
+    github_raw_url = f"https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/master/database/data/{relative_path}"
+    
+    try:
+        req = urllib.request.Request(
+            github_raw_url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req) as response:
+            yaml_content = response.read().decode('utf-8')
+    except Exception as e:
+        raise RuntimeError(f"Error descargando el material desde GitHub ({github_raw_url}): {str(e)}")
+        
+    # 4. Parsear el YAML
+    try:
+        data_dict = yaml.safe_load(yaml_content)
+    except Exception as e:
+        raise ValueError(f"Error parseando el archivo YAML: {str(e)}")
+        
+    data_list = data_dict.get('DATA', [])
+    if not data_list:
+        raise ValueError("El archivo YAML no contiene la sección 'DATA'.")
+        
+    # 5. Analizar bloques de datos
+    tabulated_n_block = None
+    tabulated_k_block = None
+    tabulated_nk_block = None
+    formula_block = None
+    
+    for block in data_list:
+        block_type = block.get('type', '').lower().strip()
+        if 'tabulated nk' in block_type:
+            tabulated_nk_block = block
+        elif 'tabulated n' in block_type:
+            tabulated_n_block = block
+        elif 'tabulated k' in block_type:
+            tabulated_k_block = block
+        elif 'formula' in block_type:
+            formula_block = block
+            
+    # 6. Generar la tabla de datos wl (nm), n, k
+    if tabulated_nk_block:
+        wl_um, n_vals, k_vals = _parse_tabulated_block(tabulated_nk_block['data'])
+    elif tabulated_n_block and tabulated_k_block:
+        wl_n, n_vals, _ = _parse_tabulated_block(tabulated_n_block['data'])
+        wl_k, k_vals, _ = _parse_tabulated_block(tabulated_k_block['data'])
+        
+        wl_um = np.unique(np.concatenate([wl_n, wl_k]))
+        n_vals = np.interp(wl_um, wl_n, n_vals)
+        k_vals = np.interp(wl_um, wl_k, k_vals)
+    elif tabulated_n_block and not formula_block:
+        wl_um, n_vals, _ = _parse_tabulated_block(tabulated_n_block['data'])
+        k_vals = np.zeros_like(n_vals)
+    elif tabulated_k_block and not formula_block:
+        wl_um, k_vals, _ = _parse_tabulated_block(tabulated_k_block['data'])
+        n_vals = np.ones_like(k_vals)
+    elif formula_block:
+        range_str = formula_block.get('wavelength_range', '0.3 2.0')
+        parts = range_str.split()
+        wl_min = float(parts[0])
+        wl_max = float(parts[1])
+        
+        if tabulated_k_block:
+            wl_um, k_vals, _ = _parse_tabulated_block(tabulated_k_block['data'])
+            valid_mask = (wl_um >= wl_min) & (wl_um <= wl_max)
+            if np.sum(valid_mask) > 0:
+                wl_um = wl_um[valid_mask]
+                k_vals = k_vals[valid_mask]
+            else:
+                wl_um = np.linspace(wl_min, wl_max, 300)
+                k_vals = np.zeros_like(wl_um)
+        else:
+            wl_um = np.linspace(wl_min, wl_max, 300)
+            k_vals = np.zeros_like(wl_um)
+            
+        coefs = [float(x) for x in formula_block.get('coefficients', '').split()]
+        formula_type_str = formula_block.get('type', '')
+        formula_id = int(re.search(r'\d+', formula_type_str).group())
+        
+        n_vals = _evaluate_dispersion_formula(formula_id, coefs, wl_um)
+    else:
+        raise ValueError("El archivo de material no contiene un formato de datos reconocible (fórmulas o tablas).")
+        
+    # 7. Guardar en formato CSV
+    wl_nm = wl_um * 1000.0
+    df_len = len(wl_nm)
+    
+    if not isinstance(n_vals, np.ndarray) or len(n_vals) != df_len:
+        n_vals = np.full(df_len, n_vals)
+    if not isinstance(k_vals, np.ndarray) or len(k_vals) != df_len:
+        k_vals = np.full(df_len, k_vals)
+        
+    import pandas as pd
+    df = pd.DataFrame({
+        'wl': wl_nm,
+        'n': n_vals,
+        'k': k_vals
+    })
+    
+    df = df.sort_values('wl').reset_index(drop=True)
+    
+    # Sanitizar nombres para el archivo CSV local
+    safe_shelf = "".join(c for c in shelf_q if c.isalnum() or c in ('-', '_')).strip()
+    safe_book = "".join(c for c in book_q if c.isalnum() or c in ('-', '_')).strip()
+    safe_page = "".join(c for c in page_q if c.isalnum() or c in ('-', '_')).strip()
+    
+    safe_filename = f"online_{safe_shelf}_{safe_book}_{safe_page}.csv"
+    dest_path = os.path.join(DB_PATH, safe_filename)
+    
+    os.makedirs(DB_PATH, exist_ok=True)
+    df.to_csv(dest_path, index=False)
+    
+    get_available_materials.cache_clear()
+    
+    return {
+        "filename": safe_filename,
+        "display_name": f"{book_q} ({page_q}) [Online]",
+        "path": dest_path
+    }
+
+_catalog_records_cache = None
+
+def _get_catalog_records():
+    global _catalog_records_cache
+    if _catalog_records_cache is not None:
+        return _catalog_records_cache
+        
+    import urllib.request
+    import yaml
+    
+    url = "https://raw.githubusercontent.com/polyanskiy/refractiveindex.info-database/master/database/catalog-nk.yml"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req) as response:
+            content = response.read().decode('utf-8')
+        catalog = yaml.safe_load(content)
+        
+        records = []
+        for shelf in catalog:
+            if "DIVIDER" in shelf:
+                continue
+            shelf_name = shelf.get("SHELF")
+            for book_entry in shelf.get("content", []):
+                if "DIVIDER" in book_entry:
+                    continue
+                book_name = book_entry.get("BOOK")
+                for page_entry in book_entry.get("content", []):
+                    if "DIVIDER" in page_entry:
+                        continue
+                    page_name = page_entry.get("PAGE")
+                    data_rel = page_entry.get("data")
+                    if data_rel:
+                        records.append({
+                            'shelf': shelf_name,
+                            'book': book_name,
+                            'page': page_name,
+                            'path': data_rel
+                        })
+        _catalog_records_cache = records
+        return records
+    except Exception as e:
+        raise RuntimeError(f"Error cargando catálogo-nk desde GitHub: {str(e)}")

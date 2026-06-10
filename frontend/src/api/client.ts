@@ -57,6 +57,11 @@ export const importMaterial = async (file: File, name: string): Promise<any> => 
     return response.data;
 };
 
+export const importMaterialFromUrl = async (url: string): Promise<any> => {
+    const response = await api.post('/materials/import-url', { url });
+    return response.data;
+};
+
 export const simulateReflectance2D = async (req: Simulation2DRequest): Promise<Simulation2DResponse> => {
     const response = await api.post('/simulate/reflectance-2d', req);
     return response.data;

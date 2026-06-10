@@ -76,6 +76,36 @@ def import_material(file: UploadFile = File(...), name: str = Form(...)):
         print(f"Error importando material: {e}")
         raise HTTPException(status_code=400, detail=f"Error parseando CSV: {str(e)}")
 
+from pydantic import BaseModel
+
+class MaterialImportUrlRequest(BaseModel):
+    url: str
+
+@app.post("/api/materials/import-url")
+def import_material_url(req: MaterialImportUrlRequest):
+    url = req.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="La URL no puede estar vacía.")
+    
+    try:
+        from backend.core.engine import import_material_from_url, get_interpolator
+        result = import_material_from_url(url)
+        
+        # Clear engine cache
+        get_interpolator.cache_clear()
+        
+        return {
+            "status": "success",
+            "message": f"Material '{result['display_name']}' importado correctamente.",
+            "filename": result['filename'],
+            "display_name": result['display_name']
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"Error importando material por URL: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar el material: {str(e)}")
+
 def classify_sensor_mode(layers: List[dict], wavelength_nm: float, polarization: str) -> str:
     has_metal = False
     metal_thickness = 0.0

@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { 
   Box, IconButton, TextField, MenuItem, Button, Typography, Divider, Checkbox, FormControlLabel, CircularProgress,
-  Stack, Dialog, DialogTitle, DialogContent, DialogActions
+  Stack, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import type { LayerConfig } from '../types';
-import { optimizeStructure, importMaterial } from '../api/client';
+import { optimizeStructure, importMaterial, importMaterialFromUrl } from '../api/client';
 import type { MaterialInfo } from '../api/client';
 
 interface Props {
@@ -44,6 +44,8 @@ const LayerEditor: React.FC<Props> = ({
   const [importName, setImportName] = useState('');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [importMethod, setImportMethod] = useState<'local' | 'online'>('online');
+  const [importUrl, setImportUrl] = useState('');
 
   // Material dropdown options
   const displayMaterials = materialsList && materialsList.length > 0 
@@ -108,6 +110,26 @@ const LayerEditor: React.FC<Props> = ({
       alert("Error optimizando la estructura. Revisa los límites y configuraciones.");
     }
     setOptimizing(false);
+  };
+
+  const handleImportUrlSubmit = async () => {
+    if (!importUrl.trim()) {
+      alert("Por favor, introduce la URL del material de refractiveindex.info.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await importMaterialFromUrl(importUrl.trim());
+      await refreshMaterials();
+      alert(`Material '${result.display_name}' importado con éxito.`);
+      setImportDialogOpen(false);
+      setImportUrl('');
+    } catch (error: any) {
+      console.error("Material import from URL failed:", error);
+      alert("Error al importar material por URL: " + (error.response?.data?.detail || error.message));
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleImportMaterialSubmit = async () => {
@@ -457,53 +479,77 @@ const LayerEditor: React.FC<Props> = ({
 
       {/* Dialog for Importing Materials */}
       <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Importar Material desde RefractiveIndex.info</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 3, mt: 1 }}>
-            Sube un archivo <strong>CSV (Data)</strong> descargado directamente de <a href="https://refractiveindex.info" target="_blank" rel="noreferrer">refractiveindex.info</a>. El sistema interpretará automáticamente las constantes ópticas n y k y las longitudes de onda en micras.
-          </Typography>
-          <Stack spacing={3}>
-            <TextField
-              fullWidth
-              label="Nombre del Material"
-              placeholder="Ej: Cobre (Cu) - Johnson, ZnO - ALD"
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-            />
-            <Button
-              variant="outlined"
-              component="label"
-              startIcon={<CloudUploadIcon />}
-              fullWidth
-              sx={{ py: 1.5 }}
-            >
-              {importFile ? `Archivo seleccionado: ${importFile.name}` : 'Seleccionar Archivo CSV'}
-              <input 
-                type="file" 
-                accept=".csv" 
-                hidden 
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setImportFile(e.target.files[0]);
-                    if (!importName) {
-                      const nameGuess = e.target.files[0].name.replace('.csv', '').replace(/_/g, ' ');
-                      setImportName(nameGuess);
-                    }
-                  }
-                }} 
+        <DialogTitle>Importar Material de refractiveindex.info</DialogTitle>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+          <Tabs value={importMethod} onChange={(_, newVal) => setImportMethod(newVal)}>
+            <Tab label="Importar desde URL (Online)" value="online" />
+            <Tab label="Subir Archivo CSV (Local)" value="local" />
+          </Tabs>
+        </Box>
+        <DialogContent sx={{ mt: 1 }}>
+          {importMethod === 'online' ? (
+            <Stack spacing={3}>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Pega la URL del material desde <a href="https://refractiveindex.info" target="_blank" rel="noreferrer">refractiveindex.info</a> (ej. la página de un metal o un vidrio). El sistema descargará e indexará el archivo YAML automáticamente, resolviendo fórmulas o tablas.
+              </Typography>
+              <TextField
+                fullWidth
+                label="URL del Material"
+                placeholder="https://refractiveindex.info/?shelf=glass&book=schott&page=N-BK7"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                disabled={importing}
               />
-            </Button>
-          </Stack>
+            </Stack>
+          ) : (
+            <Stack spacing={3}>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Sube un archivo <strong>CSV (Data)</strong> descargado directamente de <a href="https://refractiveindex.info" target="_blank" rel="noreferrer">refractiveindex.info</a>. El sistema interpretará automáticamente las constantes ópticas n y k y las longitudes de onda en micras.
+              </Typography>
+              <TextField
+                fullWidth
+                label="Nombre del Material"
+                placeholder="Ej: Cobre (Cu) - Johnson, ZnO - ALD"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                disabled={importing}
+              />
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<CloudUploadIcon />}
+                fullWidth
+                sx={{ py: 1.5 }}
+                disabled={importing}
+              >
+                {importFile ? `Archivo seleccionado: ${importFile.name}` : 'Seleccionar Archivo CSV'}
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  hidden 
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setImportFile(e.target.files[0]);
+                      if (!importName) {
+                        const nameGuess = e.target.files[0].name.replace('.csv', '').replace(/_/g, ' ');
+                        setImportName(nameGuess);
+                      }
+                    }
+                  }} 
+                />
+              </Button>
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>
             Cancelar
           </Button>
           <Button 
-            onClick={handleImportMaterialSubmit} 
+            onClick={importMethod === 'online' ? handleImportUrlSubmit : handleImportMaterialSubmit} 
             variant="contained" 
             color="primary"
-            disabled={importing || !importFile || !importName.trim()}
+            disabled={importing || (importMethod === 'online' ? !importUrl.trim() : (!importFile || !importName.trim()))}
           >
             {importing ? <CircularProgress size={20} /> : 'Importar y Registrar'}
           </Button>
